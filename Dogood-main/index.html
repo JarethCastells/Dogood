@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>dogood-app</title>
+    <style>
+      :root{
+        --boot-bg:#F7F4F4;
+        --boot-ink:#1653BB;
+        --boot-sub:#5C6C8A;
+      }
+      html,body{margin:0;min-height:100%;}
+      #boot-splash{
+        position:fixed;
+        inset:0;
+        z-index:999999;
+        display:flex;
+        flex-direction:column;
+        align-items:center;
+        justify-content:center;
+        gap:14px;
+        background:
+          radial-gradient(circle at 12% 20%, rgba(22,83,187,.08) 0, transparent 36%),
+          radial-gradient(circle at 86% 82%, rgba(240,194,29,.14) 0, transparent 38%),
+          var(--boot-bg);
+        color:var(--boot-ink);
+        font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+        transition:opacity .32s ease, visibility .32s ease;
+      }
+      #boot-splash.boot-hide{
+        opacity:0;
+        visibility:hidden;
+        pointer-events:none;
+      }
+      #boot-splash img{
+        width:min(220px,56vw);
+        height:auto;
+        object-fit:contain;
+        display:block;
+      }
+      .boot-loader{
+        width:38px;
+        height:38px;
+        border-radius:50%;
+        border:3px solid rgba(22,83,187,.2);
+        border-top-color:var(--boot-ink);
+        animation:bootSpin .8s linear infinite;
+      }
+      .boot-text{
+        font-size:.9rem;
+        font-weight:600;
+        color:var(--boot-sub);
+      }
+      .boot-actions{
+        display:none;
+        align-items:center;
+        gap:10px;
+      }
+      #boot-splash.boot-stuck .boot-actions{display:flex;}
+      .boot-btn{
+        border:1px solid rgba(22,83,187,.22);
+        background:#fff;
+        color:#1653BB;
+        border-radius:999px;
+        padding:8px 14px;
+        font-size:.82rem;
+        font-weight:700;
+        cursor:pointer;
+      }
+      @keyframes bootSpin{to{transform:rotate(360deg)}}
+    </style>
+  </head>
+  <body>
+    <div id="boot-splash" aria-live="polite" aria-label="Cargando DoGood">
+      <img src="/brand/logo-primary-trim.png" alt="DoGood" />
+      <div class="boot-loader" aria-hidden="true"></div>
+      <div class="boot-text">Cargando experiencia DoGood...</div>
+      <div class="boot-actions">
+        <button class="boot-btn" onclick="location.reload()">Recargar</button>
+      </div>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
