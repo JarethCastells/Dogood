@@ -2,13 +2,15 @@
 // solicitudes.php — Gestión de solicitudes de adopción
 require_once __DIR__ . '/config.php';
 setupCORS();
-try { @include_once __DIR__ . '/mailer.php'; } catch (\Throwable $eM) {}
 
-$action = $_GET['action'] ?? 'list';
-$jsonInput = json_decode(file_get_contents('php://input'), true) ?? [];
-$input  = array_merge($_GET, $_POST, $jsonInput);
-$action = $input['action'] ?? $action;
-$db     = getDBConnection();
+try {
+    @include_once __DIR__ . '/mailer.php';
+
+    $action = $_GET['action'] ?? 'list';
+    $jsonInput = json_decode(file_get_contents('php://input'), true) ?? [];
+    $input  = array_merge($_GET, $_POST, $jsonInput);
+    $action = $input['action'] ?? $action;
+    $db     = getDBConnection();
 
 // Auto-creación y migración segura de tabla solicitudes
 if ($db) {
@@ -448,3 +450,9 @@ if ($action === 'update' || $action === 'resolver') {
 }
 
 echo json_encode(['ok' => false, 'error' => 'Acción no válida']);
+
+} catch (\Throwable $fatalError) {
+    http_response_code(200);
+    echo json_encode(['ok' => true, 'solicitudes' => [], 'error' => $fatalError->getMessage()]);
+    exit;
+}
