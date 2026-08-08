@@ -3532,6 +3532,8 @@ export default function DoGood({initialUser=null,onLogout}){
 
   const saveAnimal=async()=>{
     if(!aN||!aH||!aP){toast$("Completa nombre, historia y peso","error");return;}
+    if(Number(aP) > 60){toast$("El peso máximo permitido es 60 kg","error");return;}
+    if(Number(aEd) > 20){toast$("La edad máxima permitida es 20 años","error");return;}
     const emoji={perro:IC.dog,gato:IC.cat}[aE]||IC.paw;
     const color=GRADIENTS[Math.floor(Math.random()*GRADIENTS.length)];
     const payload={
@@ -3602,6 +3604,8 @@ export default function DoGood({initialUser=null,onLogout}){
     goPage("_edit");
   };
   const saveEdit=async()=>{
+    if(Number(ePeso) > 60){toast$("El peso máximo permitido es 60 kg","error");return;}
+    if(Number(eEdad) > 20){toast$("La edad máxima permitida es 20 años","error");return;}
     const payload = {
       id: editAnimal.id,
       nombre: eN,
@@ -5408,8 +5412,8 @@ export default function DoGood({initialUser=null,onLogout}){
                     ["Especie",<select value={aE} onChange={e=>setAE(e.target.value)} style={inp}><option value="perro">Perro {IC.dog}</option><option value="gato">Gato {IC.cat}</option></select>],
                     ["Sexo",<select value={aS} onChange={e=>setAS(e.target.value)} style={inp}><option value="Hembra">Hembra</option><option value="Macho">Macho</option></select>],
                     ["Talla",<select value={aT} onChange={e=>setAT(e.target.value)} style={inp}><option value="pequeño">Pequeño</option><option value="mediano">Mediano</option><option value="grande">Grande</option></select>],
-                    ["Peso (kg)",<input type="number" inputMode="decimal" step="0.1" min="0" value={aP} onChange={e=>setAP(e.target.value.replace(/[^0-9.]/g,""))} placeholder="5.5" style={inp} onFocus={f=>f.target.style.borderColor=T.accentDk} onBlur={f=>f.target.style.borderColor=T.border}/>],
-                    ["Edad (años)",<input type="number" inputMode="numeric" min="0" value={aEd} onChange={e=>setAEd(e.target.value.replace(/\D/g,""))} placeholder="2" style={inp} onFocus={f=>f.target.style.borderColor=T.accentDk} onBlur={f=>f.target.style.borderColor=T.border}/>],
+                    ["Peso (kg)",<input type="number" inputMode="decimal" step="0.1" min="0" max="60" value={aP} onChange={e=>{let val=e.target.value.replace(/[^0-9.]/g,"");if(Number(val)>60)val="60";setAP(val);}} placeholder="Máx 60 kg" style={inp} onFocus={f=>f.target.style.borderColor=T.accentDk} onBlur={f=>f.target.style.borderColor=T.border}/>],
+                    ["Edad (años)",<input type="number" inputMode="numeric" min="0" max="20" value={aEd} onChange={e=>{let val=e.target.value.replace(/\D/g,"");if(Number(val)>20)val="20";setAEd(val);}} placeholder="Máx 20 años" style={inp} onFocus={f=>f.target.style.borderColor=T.accentDk} onBlur={f=>f.target.style.borderColor=T.border}/>],
                     ["¿Aplica cuota de recuperación?",
                       <select value={aAplicaCuota ? "si" : "no"} onChange={e=>setAAplicaCuota(e.target.value === "si")} style={inp}>
                         <option value="no">Sin Cuota (Gratuita)</option>
@@ -5522,8 +5526,8 @@ export default function DoGood({initialUser=null,onLogout}){
                 <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14,marginBottom:14}}>
                   {[["Nombre",<input value={eN} onChange={e=>setEN(e.target.value)} style={inp} onFocus={f=>f.target.style.borderColor=T.accentDk} onBlur={f=>f.target.style.borderColor=T.border}/>],
                     ["Estatus",<select value={eE} onChange={e=>setEE(e.target.value)} style={inp}><option>En adopción</option><option>En proceso</option><option>Adoptado</option></select>],
-                    ["Peso (kg)",<input type="number" inputMode="decimal" step="0.1" min="0" value={ePeso} onChange={e=>setEPeso(e.target.value.replace(/[^0-9.]/g,""))} placeholder="5.5" style={inp} onFocus={f=>f.target.style.borderColor=T.accentDk} onBlur={f=>f.target.style.borderColor=T.border}/>],
-                    ["Edad (años)",<input type="number" inputMode="numeric" min="0" value={eEdad} onChange={e=>setEEdad(e.target.value.replace(/\D/g,""))} placeholder="2" style={inp} onFocus={f=>f.target.style.borderColor=T.accentDk} onBlur={f=>f.target.style.borderColor=T.border}/>],
+                    ["Peso (kg)",<input type="number" inputMode="decimal" step="0.1" min="0" max="60" value={ePeso} onChange={e=>{let val=e.target.value.replace(/[^0-9.]/g,"");if(Number(val)>60)val="60";setEPeso(val);}} placeholder="Máx 60 kg" style={inp} onFocus={f=>f.target.style.borderColor=T.accentDk} onBlur={f=>f.target.style.borderColor=T.border}/>],
+                    ["Edad (años)",<input type="number" inputMode="numeric" min="0" max="20" value={eEdad} onChange={e=>{let val=e.target.value.replace(/\D/g,"");if(Number(val)>20)val="20";setEEdad(val);}} placeholder="Máx 20 años" style={inp} onFocus={f=>f.target.style.borderColor=T.accentDk} onBlur={f=>f.target.style.borderColor=T.border}/>],
                   ].map(([l,el])=>(
                     <div key={l}>
                       <label style={{display:"block",fontSize:".76rem",fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:.6,marginBottom:6}}>{l}</label>
