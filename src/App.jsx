@@ -3040,21 +3040,33 @@ export default function DoGood({initialUser=null,onLogout}){
       return;
     }
     setLoading(true);
-    const r = await apiFetch("auth", "update", "POST", {
-      id: editUser.id,
-      nombre: uNombre,
-      email: uEmail,
-      telefono: uTel,
-      rol: "rescatista"
-    });
-    setLoading(false);
-    if (r.ok) {
-      toast$(`Rescatista ${uNombre} actualizado`, "success");
+    try {
+      const r = await apiFetch("auth", "update", "POST", {
+        id: editUser.id,
+        nombre: uNombre,
+        email: uEmail,
+        telefono: uTel,
+        rol: "rescatista"
+      });
+
+      // Actualización optimista inmediata en memoria y localStorage
+      setAllUsers(prev => {
+        const updated = prev.map(u => (String(u.id) === String(editUser.id) || u.email?.toLowerCase() === editUser.email?.toLowerCase())
+          ? { ...u, nombre: uNombre, email: uEmail, telefono: uTel }
+          : u
+        );
+        try { localStorage.setItem("dogood_custom_users", JSON.stringify(updated)); } catch {}
+        return updated;
+      });
+
+      toast$(`✅ Rescatista ${uNombre} actualizado exitosamente`, "success");
       setEditUser(null);
       setUNombre(""); setUEmail(""); setUTel("");
-      loadUsers();
-    } else {
-      toast$(r.error || "Error al actualizar", "error");
+      await loadUsers();
+    } catch(e) {
+      toast$("Error al actualizar el rescatista", "error");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -3351,9 +3363,10 @@ export default function DoGood({initialUser=null,onLogout}){
 
     try {
       const r = await apiFetch("auth", "list", "GET");
-      if (r && r.ok && Array.isArray(r.users) && r.users.length > 0) {
+      if (r && r.ok && Array.isArray(r.users)) {
         setAllUsers(() => {
-          const combined = [...localUsers, ...r.users];
+          // Prioridad a usuarios actualizados de la BD MySQL
+          const combined = [...r.users, ...localUsers];
           const unique = [];
           const map = new Map();
           for (const item of combined) {

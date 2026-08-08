@@ -1,8 +1,8 @@
 <?php
 // solicitudes.php — Gestión de solicitudes de adopción
 require_once __DIR__ . '/config.php';
-require_once __DIR__ . '/mailer.php';
 setupCORS();
+try { @include_once __DIR__ . '/mailer.php'; } catch (\Throwable $eM) {}
 
 $action = $_GET['action'] ?? 'list';
 $jsonInput = json_decode(file_get_contents('php://input'), true) ?? [];
