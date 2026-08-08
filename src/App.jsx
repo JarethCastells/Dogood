@@ -1014,6 +1014,137 @@ function ChecklistAdopcionModal({ solicitud, animal, onClose, onComplete }) {
   );
 }
 
+function triggerCertPrint(anim, sol, userObj) {
+  const petName = anim?.nombre || sol?.animal_nombre || "Mascota";
+  const petRaza = anim?.raza || sol?.animal_raza || "Compañero Fiel";
+  const petSexo = anim?.sexo || sol?.animal_sexo || "No especificado";
+  const petEspecie = anim?.especie || sol?.animal_especie || "Mascota";
+  const petEdad = anim?.edad ? `${anim.edad} ${Number(anim.edad) === 1 ? "año" : "años"}` : "Joven";
+  const petColor = anim?.color && !anim.color.includes("gradient") ? anim.color : "No especificado";
+  const petPhoto = anim?.foto_url || anim?.foto || sol?.animal_foto || null;
+  const petEmoji = anim?.emoji || sol?.animal_emoji || "🐾";
+  const adopterName = sol?.guest_nombre || sol?.usuario_nombre || userObj?.nombre || "Adoptante Responsable";
+  const rescuerName = anim?.rescatista_nombre || sol?.rescatista_nombre || "Refugio DoGood";
+  const certDate = sol?.fecha || new Date().toISOString().split("T")[0];
+  const certCode = `DG-CERT-2026-${(anim?.id || sol?.animal_id || 1).toString().padStart(4, "0")}`;
+  const signatureData = sol?.firma_digital || sol?.signature_data || null;
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8"/>
+        <title>Certificado de Adopción Responsable - ${petName}</title>
+        <base href="${origin}/">
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+          body {
+            margin: 0;
+            padding: 24px;
+            background: #fff;
+            font-family: 'Plus Jakarta Sans', Segoe UI, sans-serif;
+            color: #0f172a;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          @page { size: letter portrait; margin: 8mm; }
+          @media print { body { padding: 0; } }
+        </style>
+      </head>
+      <body>
+        <div style="max-width:800px;margin:0 auto;border:4px double #F0C21D;padding:24px;border-radius:24px;background:#FFFDF9;position:relative;">
+          <div style="text-align:center;margin-bottom:20px;border-bottom:2px solid #F0C21D;padding-bottom:14px;">
+            <img src="${origin}/brand/logo-primary-trim.png" alt="DoGood" style="height:44px;object-fit:contain;margin-bottom:6px;" />
+            <h1 style="font-size:1.6rem;font-weight:900;color:#0F45A2;margin:0;letter-spacing:1px;">CERTIFICADO DE ADOPCIÓN RESPONSABLE</h1>
+            <div style="font-size:.8rem;color:#64748B;margin-top:4px;">Folio Oficial: <strong>${certCode}</strong> | Fecha: ${certDate}</div>
+          </div>
+          
+          <div style="display:flex;align-items:center;gap:22px;background:#FFF;padding:20px 24px;border-radius:16px;border:1.5px solid #E2E8F0;margin-bottom:20px;">
+            <div style="text-align:center;flex-shrink:0;">
+              <div style="width:110px;height:110px;border-radius:50%;border:4px solid #F0C21D;overflow:hidden;margin:0 auto 8px;display:flex;align-items:center;justify-content:center;background:#FFF;">
+                ${petPhoto ? `<img src="${petPhoto}" alt="${petName}" style="width:100%;height:100%;object-fit:cover;" />` : `<span style="font-size:3.6rem;">${petEmoji}</span>`}
+              </div>
+              <div style="font-size:.68rem;font-weight:800;color:#0F45A2;background:#EFF6FF;padding:2px 10px;border-radius:50px;border:1px solid #BFDBFE;display:inline-block;">${petEspecie.toUpperCase()}</div>
+            </div>
+            
+            <div style="flex:1;">
+              <div style="font-size:.82rem;color:#475569;">Se certifica formalmente que la mascota</div>
+              <div style="font-size:2.1rem;font-weight:900;color:#0F45A2;line-height:1.1;margin:2px 0 4px;">${petName}</div>
+              <div style="font-size:.76rem;color:#64748B;margin-bottom:12px;font-weight:600;">${petRaza} • ${petSexo} • ${petEdad} ${petColor !== "No especificado" ? `• Color: ${petColor}` : ""}</div>
+              <div style="font-size:.85rem;color:#1E293B;">ha sido entregado/a en adopción legítima y definitiva a:</div>
+              <div style="font-size:1.35rem;font-weight:800;color:#D97706;margin-top:2px;">${adopterName}</div>
+              <div style="font-size:.76rem;color:#64748B;margin-top:4px;">Bajo la tutela y respaldo de <strong>${rescuerName}</strong>.</div>
+            </div>
+          </div>
+
+          <div style="text-align:center;font-size:.78rem;color:#475569;margin-bottom:22px;font-style:italic;background:#FFFBEB;padding:10px 16px;border-radius:12px;border:1px dashed #FCD34D;">
+            "Adoptar es un acto de amor transformador. Al firmar este certificado, nos comprometemos a cuidar, proteger y brindar una vida plena y digna a ${petName}."
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:16px;align-items:end;border-top:1.5px solid #E2E8F0;padding-top:16px;">
+            <div style="text-align:center;">
+              <div style="height:45px;display:flex;align-items:flex-end;justify-content:center;margin-bottom:4px;">
+                <span style="font-size:1.1rem;font-style:italic;color:#0F45A2;font-weight:700;">${rescuerName}</span>
+              </div>
+              <div style="border-bottom:1.5px solid #0F45A2;width:80%;margin:0 auto 4px;"></div>
+              <div style="font-size:.75rem;font-weight:800;color:#0F45A2;">${rescuerName}</div>
+              <div style="font-size:.68rem;color:#64748B;">Rescatista / Refugio Responsable</div>
+            </div>
+
+            <div style="text-align:center;padding:0 8px;">
+              <div style="width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,#FFF7DA 0%,#FEF3C7 100%);border:2px solid #F0C21D;display:flex;flex-direction:column;align-items:center;justify-content:center;margin:0 auto 4px;">
+                <img src="${origin}/brand/isotype-blueyellow-trim.png" alt="DoGood Seal" style="width:26px;height:26px;object-fit:contain;" />
+                <span style="font-size:.45rem;font-weight:900;color:#92400E;">DO GOOD</span>
+              </div>
+              <div style="font-size:.62rem;font-weight:800;color:#059669;">SELLO OFICIAL</div>
+            </div>
+
+            <div style="text-align:center;">
+              <div style="height:45px;display:flex;align-items:flex-end;justify-content:center;margin-bottom:4px;">
+                ${signatureData ? `<img src="${signatureData}" alt="Firma Adoptante" style="max-height:45px;max-width:160px;object-fit:contain;" />` : `<span style="font-size:1.05rem;font-style:italic;color:#D97706;font-weight:700;">${adopterName}</span>`}
+              </div>
+              <div style="border-bottom:1.5px solid #0F45A2;width:80%;margin:0 auto 4px;"></div>
+              <div style="font-size:.75rem;font-weight:800;color:#0F45A2;">${adopterName}</div>
+              <div style="font-size:.68rem;color:#64748B;">Adoptante Responsable</div>
+            </div>
+          </div>
+        </div>
+        <script>
+          window.onload = function() {
+            setTimeout(function() { window.print(); }, 300);
+          };
+        </script>
+      </body>
+    </html>
+  `;
+
+  const printWin = window.open("", "_blank", "width=900,height=1100");
+  if (printWin) {
+    printWin.document.open();
+    printWin.document.write(htmlContent);
+    printWin.document.close();
+  } else {
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(htmlContent);
+    doc.close();
+    setTimeout(() => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+      setTimeout(() => { try { document.body.removeChild(iframe); } catch(e){} }, 2000);
+    }, 500);
+  }
+}
+
 function triggerConvenioPrint(animal, solicitud, signatureData) {
   const petName = animal?.nombre || solicitud?.animal_nombre || "Mascota";
   const petEspecie = animal?.especie || solicitud?.animal_especie || "Mascota";
@@ -2960,18 +3091,25 @@ export default function DoGood({initialUser=null,onLogout}){
   };
 
   const deleteRescatista = async (userObj) => {
-    if (!window.confirm(`¿Eliminar al rescatista ${userObj.nombre}?`)) return;
-    await apiFetch("auth", "delete", "POST", { id: userObj.id, email: userObj.email });
-
+    if (!window.confirm(`¿Estás seguro de eliminar permanentemente al rescatista "${userObj.nombre}"?`)) return;
+    setLoading(true);
     try {
-      const stored = JSON.parse(localStorage.getItem("dogood_custom_users") || "[]");
-      const filtered = stored.filter(u => u.email?.toLowerCase() !== userObj.email?.toLowerCase());
-      localStorage.setItem("dogood_custom_users", JSON.stringify(filtered));
-    } catch {}
+      await apiFetch("auth", "delete", "POST", { id: userObj.id, email: userObj.email });
 
-    setAllUsers(prev => prev.filter(u => u.email?.toLowerCase() !== userObj.email?.toLowerCase()));
-    toast$(`Rescatista ${userObj.nombre} eliminado`, "success");
-    loadUsers();
+      try {
+        const stored = JSON.parse(localStorage.getItem("dogood_custom_users") || "[]");
+        const filtered = stored.filter(u => u.email?.toLowerCase() !== userObj.email?.toLowerCase() && String(u.id) !== String(userObj.id));
+        localStorage.setItem("dogood_custom_users", JSON.stringify(filtered));
+      } catch {}
+
+      setAllUsers(prev => prev.filter(u => u.email?.toLowerCase() !== userObj.email?.toLowerCase() && String(u.id) !== String(userObj.id)));
+      toast$(`🗑️ Rescatista ${userObj.nombre} eliminado exitosamente`, "success");
+      await loadUsers();
+    } catch(e) {
+      toast$("Error al eliminar el rescatista", "error");
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(()=>{
@@ -3543,199 +3681,12 @@ export default function DoGood({initialUser=null,onLogout}){
     const petSexo = anim.sexo || a.animal_sexo || a.sexo || "No especificado";
     const petEspecie = anim.especie || a.especie || "Mascota";
     const petEdad = anim.edad ? `${anim.edad} ${Number(anim.edad) === 1 ? "año" : "años"}` : (a.edad ? `${a.edad}` : "Joven");
-    const petColor = anim.color || a.color || "No especificado";
-    const petPhoto = anim.foto_url || anim.foto || a.foto_url || a.animal_foto || null;
-    const petEmoji = anim.emoji || a.animal_emoji || a.emoji || "🐾";
-    const adopterName = sol?.guest_nombre || sol?.usuario_nombre || a.guest_nombre || a.usuario_nombre || user?.nombre || "Adoptante Responsable";
-    const rescuerName = anim.rescatista_nombre || a.rescatista_nombre || sol?.rescatista_nombre || "Refugio DoGood";
-    const certDate = sol?.fecha || new Date().toISOString().split("T")[0];
-    const certCode = `DG-CERT-2026-${(anim.id || a.id || 1).toString().padStart(4, "0")}`;
-    const signatureData = sol?.signature_data || sol?.firma || null;
-
     const handlePrintCert = () => {
-      const printWin = window.open("", "_blank", "width=900,height=1100");
-      if (!printWin) return;
-      const content = document.getElementById("pet-certificate-print-area")?.outerHTML;
-      printWin.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>Certificado de Adopción - ${petName}</title>
-            <style>
-              @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
-              @font-face {
-                font-family: 'Syne';
-                src: url('/brand/AddenRegular.ttf') format('truetype');
-                font-weight: 400 900;
-              }
-              body {
-                margin: 0;
-                padding: 24px;
-                background: #fff;
-                font-family: 'Plus Jakarta Sans', Segoe UI, sans-serif;
-                color: #0f172a;
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-              }
-              @page {
-                size: letter portrait;
-                margin: 8mm;
-              }
-              @media print {
-                body { padding: 0; }
-              }
-            </style>
-          </head>
-          <body>
-            <div style="max-width:800px;margin:0 auto;">
-              ${content}
-            </div>
-            <script>
-              setTimeout(() => { window.print(); }, 450);
-            </script>
-          </body>
-        </html>
-      `);
-      printWin.document.close();
+      triggerCertPrint(anim, sol, user);
     };
 
     const handlePrintConvenio = () => {
-      const compCode = `DG-COMP-2026-${(anim.id || a.id || 1).toString().padStart(4, "0")}`;
-      const printWin = window.open("", "_blank", "width=900,height=1100");
-      if (!printWin) return;
-      printWin.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>Carta de Compromiso y Convenio - ${petName}</title>
-            <style>
-              @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
-              @font-face {
-                font-family: 'Syne';
-                src: url('/brand/AddenRegular.ttf') format('truetype');
-                font-weight: 400 900;
-              }
-              body {
-                font-family: 'Plus Jakarta Sans', Segoe UI, sans-serif;
-                margin: 0;
-                padding: 20px;
-                color: #0f172a;
-                background: #fff;
-                line-height: 1.45;
-                font-size: 11px;
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-              }
-              @page { size: letter portrait; margin: 8mm; }
-              @media print { body { padding: 0; } }
-            </style>
-          </head>
-          <body>
-            <div style="max-width:800px;margin:0 auto;">
-              <div style="background:#FFFDF9;border:3px solid #0F45A2;border-radius:16px;padding:6px;position:relative;overflow:hidden;">
-                <div style="border:2px solid #F0C21D;border-radius:12px;padding:20px 24px;position:relative;background:linear-gradient(180deg,#FFFFFF 0%,#FFFDF6 100%);">
-                  <div style="position:absolute;inset:0;background-image:url('/brand/graphic-hand-yellowblue.jpg');background-size:cover;background-position:center;opacity:0.035;pointer-events:none;"></div>
-                  
-                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;border-bottom:1.5px solid rgba(240,194,29,0.5);padding-bottom:10px;position:relative;">
-                    <img src="/brand/logo-primary-trim.png" alt="DoGood Logo" style="height:38px;object-fit:contain;" />
-                    <div style="text-align:right;">
-                      <h2 style="font-family:'Syne',sans-serif;font-size:13.5px;font-weight:900;margin:0;text-transform:uppercase;letter-spacing:1px;color:#0F45A2;">CARTA DE COMPROMISO Y CONVENIO DE ADOPCIÓN</h2>
-                      <div style="font-style:italic;font-size:10.5px;color:#64748B;margin-top:2px;">
-                        Folio: <strong style="color:#D97706;">${compCode}</strong> | Querétaro, Qro. a ${new Date().getDate()} de ${["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"][new Date().getMonth()]} de ${new Date().getFullYear()}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style="display:flex;gap:16px;align-items:center;margin-bottom:14px;background:#FFFFFF;padding:12px 16px;border-radius:12px;border:1.5px solid #E2E8F0;position:relative;">
-                    <div style="width:80px;height:80px;border-radius:12px;border:2.5px solid #F0C21D;overflow:hidden;flex-shrink:0;background:#FFF;display:flex;align-items:center;justify-content:center;">
-                      ${petPhoto ? `<img src="${petPhoto}" alt="${petName}" style="width:100%;height:100%;object-fit:cover;" />` : `<span style="font-size:2.5rem;">${petEmoji}</span>`}
-                    </div>
-                    <div style="flex:1;">
-                      <p style="margin:0 0 6px 0;font-size:11px;font-weight:700;color:#0F45A2;">
-                        Por medio del presente instrumento, el adoptante formaliza la recepción legítima del animal de compañía:
-                      </p>
-                      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px 12px;font-size:10.5px;color:#334155;">
-                        <div><strong>Nombre:</strong> <span style="color:#D97706;font-weight:800;">${petName}</span></div>
-                        <div><strong>Especie:</strong> ${petEspecie.toUpperCase()}</div>
-                        <div><strong>Sexo:</strong> ${petSexo}</div>
-                        <div><strong>Edad:</strong> ${petEdad}</div>
-                        <div><strong>Tamaño:</strong> ${petColor}</div>
-                        <div><strong>Raza/Color:</strong> ${petRaza}</div>
-                      </div>
-                      <div style="margin-top:6px;padding-top:4px;border-top:1px dashed #E2E8F0;font-size:10.5px;color:#475569;">
-                        <strong>Adoptante Responsable:</strong> ${adopterName} | <strong>Rescatista/Refugio:</strong> ${rescuerName}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style="margin-bottom:14px;position:relative;">
-                    <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:11px;margin-bottom:6px;color:#0F45A2;text-transform:uppercase;letter-spacing:0.5px;display:flex;align-items:center;gap:6px;">
-                      <img src="/brand/isotype-blueyellow-trim.png" alt="Icon" style="width:14px;height:14px;" />
-                      <span>Cláusulas y Obligaciones del Adoptante Responsable:</span>
-                    </div>
-                    <ol style="margin:0;padding-left:18px;font-size:10px;color:#334155;line-height:1.38;">
-                      <li style="margin-bottom:2px;">Me comprometo a completar su esquema de vacunación, aplicando refuerzos y desparasitaciones periódicas conforme al veterinario.</li>
-                      <li style="margin-bottom:2px;">Me comprometo a llevar a la mascota a su cita de esterilización en la fecha agendada por su rescatista responsable.</li>
-                      <li style="margin-bottom:2px;">Le brindaré un refugio seco, parcialmente techado, limpio, ventilado y seguro, prodigándole buen trato y amor.</li>
-                      <li style="margin-bottom:2px;">Garantizaré acceso libre a un espacio digno y protegido de las inclemencias del clima (lluvia, frío o sol extremo).</li>
-                      <li style="margin-bottom:2px;">Le proporcionaré alimento nutritivo y suficiente, así como agua fresca y limpia disponible las 24 horas del día.</li>
-                      <li style="margin-bottom:2px;">El animal no vivirá encadenado, amarrado, enjaulado ni en azoteas o espacios reducidos por ningún período prolongado.</li>
-                      <li style="margin-bottom:2px;">Mantendré extremo cuidado para evitar escapes a la vía pública. En caso de extravío, informaré inmediatamente al rescatista y a DoGood.</li>
-                      <li style="margin-bottom:2px;">Le colocaré un collar con placa de identificación visible con su nombre y números telefónicos de contacto vigentes.</li>
-                      <li style="margin-bottom:2px;">Procuraré atención médica veterinaria inmediata ante cualquier síntoma de enfermedad o accidente.</li>
-                      <li style="margin-bottom:2px;">Cumpliré rigurosamente con las disposiciones legales y sanitarias municipales y estatales sobre tenencia de mascotas.</li>
-                      <li style="margin-bottom:2px;">Notificaré cualquier cambio de domicilio o teléfono durante la vida de la mascota para dar continuidad al seguimiento.</li>
-                      <li style="margin-bottom:2px;">Si por causa de fuerza mayor no pudiera conservar a la mascota, lo comunicaré al rescatista emisor para coordinar un re-hogar seguro.</li>
-                      <li style="margin-bottom:2px;">Bajo ninguna circunstancia abandonaré, regalaré para fines inadecuados, ni mutilaré (corte de cola/orejas) a la mascota.</li>
-                      <li style="margin-bottom:2px;">Acepto que ante el incumplimiento comprobado de estas cláusulas, la rescatista o DoGood podrán retirar a la mascota de inmediato.</li>
-                      <li style="margin-bottom:2px;">Permitiré visitas periódicas de seguimiento previa cita y compartiré evidencias fotográficas del estado de la mascota.</li>
-                      <li style="margin-bottom:2px;">Entiendo que las cuotas de recuperación no son reembolsables, pues financian la atención de más animales rescatados.</li>
-                    </ol>
-                  </div>
-
-                  <div style="border-top:1.5px solid #E2E8F0;padding-top:10px;position:relative;">
-                    <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:end;">
-                      <div style="text-align:center;">
-                        <div style="height:44px;display:flex;align-items:flex-end;justify-content:center;margin-bottom:2px;">
-                          ${signatureData ? `<img src="${signatureData}" alt="Firma" style="max-height:44px;max-width:180px;object-fit:contain;" />` : `<span style="font-family:'Syne',sans-serif;font-size:.95rem;font-style:italic;color:#D97706;font-weight:700;">${adopterName.toUpperCase()}</span>`}
-                        </div>
-                        <div style="border-bottom:1.5px solid #0F45A2;width:85%;margin:0 auto 3px;"></div>
-                        <div style="font-size:10.5px;font-weight:bold;color:#0F45A2;">${adopterName.toUpperCase()}</div>
-                        <div style="font-size:9px;color:#64748B;">(Firma del Adoptante Responsable)</div>
-                      </div>
-
-                      <div style="text-align:center;padding:0 4px;">
-                        <div style="width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#FFF7DA 0%,#FEF3C7 100%);border:2px solid #F0C21D;box-shadow:0 3px 10px rgba(240,194,29,0.3);display:flex;flex-direction:column;align-items:center;justify-content:center;margin:0 auto 2px;">
-                          <img src="/brand/isotype-blueyellow-trim.png" alt="Seal" style="width:24px;height:24px;object-fit:contain;" />
-                          <span style="font-size:.42rem;font-weight:900;color:#92400E;letter-spacing:0.5px;">DO GOOD</span>
-                        </div>
-                        <div style="font-size:.55rem;font-weight:800;color:#059669;">CONVENIO REGISTRADO</div>
-                      </div>
-
-                      <div style="text-align:center;">
-                        <div style="height:44px;display:flex;align-items:flex-end;justify-content:center;margin-bottom:2px;">
-                          <span style="font-family:'Syne',sans-serif;font-size:1rem;font-style:italic;color:#0F45A2;font-weight:700;">${rescuerName}</span>
-                        </div>
-                        <div style="border-bottom:1.5px solid #0F45A2;width:85%;margin:0 auto 3px;"></div>
-                        <div style="font-size:10.5px;font-weight:bold;color:#0F45A2;">${rescuerName.toUpperCase()}</div>
-                        <div style="font-size:9px;color:#64748B;">(Rescatista Emisor Responsable)</div>
-                      </div>
-                    </div>
-
-                    <div style="text-align:center;margin-top:8px;font-size:8.5px;color:#94A3B8;border-top:1px solid #F1F5F9;padding-top:4px;">
-                      Documento digital encriptado emitido por la Plataforma DoGood (dogood.mx) — Adopciones Responsables México
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <script>
-              setTimeout(() => { window.print(); }, 450);
-            </script>
-          </body>
-        </html>
-      `);
-      printWin.document.close();
+      triggerConvenioPrint(anim, sol, signatureData);
     };
 
     setModal(
@@ -5948,6 +5899,50 @@ export default function DoGood({initialUser=null,onLogout}){
           </Modal>
         );
       })()}
+
+      {loading && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 99999,
+          background: "rgba(15, 23, 42, 0.72)",
+          backdropFilter: "blur(8px)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "#FFF"
+        }}>
+          <style>{`@keyframes spinner-rotate { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+          <div style={{
+            background: "#FFFFFF",
+            borderRadius: 24,
+            padding: "36px 40px",
+            textAlign: "center",
+            boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.4)",
+            maxWidth: 380,
+            width: "90%",
+            border: "2.5px solid #F0C21D",
+            animation: "fadeIn 0.2s ease-out"
+          }}>
+            <div style={{
+              width: 52,
+              height: 52,
+              border: "4px solid #E2E8F0",
+              borderTopColor: "#1653BB",
+              borderRadius: "50%",
+              animation: "spinner-rotate 0.8s linear infinite",
+              margin: "0 auto 18px"
+            }} />
+            <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: "1.25rem", fontWeight: 800, color: "#0F45A2", margin: "0 0 8px 0" }}>
+              Procesando en la Base de Datos...
+            </h3>
+            <p style={{ fontSize: ".86rem", color: "#64748B", margin: 0, lineHeight: 1.5, fontWeight: 500 }}>
+              Actualizando la información en tiempo real. Por favor espera un momento.
+            </p>
+          </div>
+        </div>
+      )}
 
       {toast&&<Toast msg={toast.msg} type={toast.type}/>}
     </div>
