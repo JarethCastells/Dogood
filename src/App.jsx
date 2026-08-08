@@ -96,12 +96,12 @@ async function apiFetch(endpoint, action, method = "GET", body = null) {
 }
 
 const DEFAULT_ANIMALS = [
-  { id: 101, emoji: "🐕", nombre: "Canela", especie: "perro", raza: "Mestizo", edad: "1 año", tamano: "Mediano", sexo: "Hembra", ubicacion: "Narvarte", foto_url: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=900&q=80", estatus: "Disponible", descripcion: "Perrita alegre, vacunada y esterilizada busca un hogar amoroso." },
-  { id: 102, emoji: "🐕", nombre: "Coco", especie: "perro", raza: "Chihuahua", edad: "5 años", tamano: "Chico", sexo: "Macho", ubicacion: "Nápoles", foto_url: "https://images.unsplash.com/photo-1583511655826-05700d52f4d9?auto=format&fit=crop&w=900&q=80", estatus: "Disponible", descripcion: "Muy cariñoso, ideal para compañía en departamento." },
-  { id: 103, emoji: "🐕", nombre: "Max", especie: "perro", raza: "Labrador", edad: "2 años", tamano: "Grande", sexo: "Macho", ubicacion: "CDMX", foto_url: "https://images.unsplash.com/photo-1552053831-71594a27632d?auto=format&fit=crop&w=900&q=80", estatus: "Disponible", descripcion: "Juguetón, noble y muy activo para paseos al aire libre." },
-  { id: 104, emoji: "🐕", nombre: "Thor", especie: "perro", raza: "Pastor Alemán", edad: "3 años", tamano: "Grande", sexo: "Macho", ubicacion: "Condesa", foto_url: "https://images.unsplash.com/photo-1589941013453-ec89f33b5e95?auto=format&fit=crop&w=900&q=80", estatus: "Disponible", descripcion: "Protector, inteligente y educado." },
-  { id: 105, emoji: "🐱", nombre: "Noche", especie: "gato", raza: "British", edad: "2 años", tamano: "Chico", sexo: "Macho", ubicacion: "San Rafael", foto_url: "https://images.unsplash.com/photo-1592194996308-7b43878e84a6?auto=format&fit=crop&w=900&q=80", estatus: "Disponible", descripcion: "Gatito independiente, tranquilo y cariñoso." },
-  { id: 106, emoji: "🐱", nombre: "Mina", especie: "gato", raza: "Ragdoll", edad: "8 meses", tamano: "Chico", sexo: "Hembra", ubicacion: "Portales", foto_url: "https://images.unsplash.com/photo-1533743983669-94fa5c4338ec?auto=format&fit=crop&w=900&q=80", estatus: "Disponible", descripcion: "Cachorrita juguetona e indoor." }
+  { id: 101, emoji: "🐕", nombre: "Canela", especie: "perro", raza: "Mestizo", edad: "1 año", tamano: "Mediano", sexo: "Hembra", ubicacion: "Narvarte", foto_url: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=900&q=80", estatus: "En adopción", descripcion: "Perrita alegre, vacunada y esterilizada busca un hogar amoroso." },
+  { id: 102, emoji: "🐕", nombre: "Coco", especie: "perro", raza: "Chihuahua", edad: "5 años", tamano: "Chico", sexo: "Macho", ubicacion: "Nápoles", foto_url: "https://images.unsplash.com/photo-1583511655826-05700d52f4d9?auto=format&fit=crop&w=900&q=80", estatus: "En adopción", descripcion: "Muy cariñoso, ideal para compañía en departamento." },
+  { id: 103, emoji: "🐕", nombre: "Max", especie: "perro", raza: "Labrador", edad: "2 años", tamano: "Grande", sexo: "Macho", ubicacion: "CDMX", foto_url: "https://images.unsplash.com/photo-1552053831-71594a27632d?auto=format&fit=crop&w=900&q=80", estatus: "En adopción", descripcion: "Juguetón, noble y muy activo para paseos al aire libre." },
+  { id: 104, emoji: "🐕", nombre: "Thor", especie: "perro", raza: "Pastor Alemán", edad: "3 años", tamano: "Grande", sexo: "Macho", ubicacion: "Condesa", foto_url: "https://images.unsplash.com/photo-1589941013453-ec89f33b5e95?auto=format&fit=crop&w=900&q=80", estatus: "En adopción", descripcion: "Protector, inteligente y educado." },
+  { id: 105, emoji: "🐱", nombre: "Noche", especie: "gato", raza: "British", edad: "2 años", tamano: "Chico", sexo: "Macho", ubicacion: "San Rafael", foto_url: "https://images.unsplash.com/photo-1592194996308-7b43878e84a6?auto=format&fit=crop&w=900&q=80", estatus: "En adopción", descripcion: "Gatito independiente, tranquilo y cariñoso." },
+  { id: 106, emoji: "🐱", nombre: "Mina", especie: "gato", raza: "Ragdoll", edad: "8 meses", tamano: "Chico", sexo: "Hembra", ubicacion: "Portales", foto_url: "https://images.unsplash.com/photo-1533743983669-94fa5c4338ec?auto=format&fit=crop&w=900&q=80", estatus: "En adopción", descripcion: "Cachorrita juguetona e indoor." }
 ];
 
 /* ========================================
@@ -4293,28 +4293,28 @@ export default function DoGood({initialUser=null,onLogout}){
             <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(4,1fr)",gap:14,marginBottom:28}}>
               {[
                 [
-                  animals.filter(a=>a.estatus==="En adopción").length,
+                  animals.filter(a => a.estatus === "En adopción" || a.estatus === "Disponible").length,
                   "Disponibles",
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>,
                   T.accentDk,
                   "#EBF5FF"
                 ],
                 [
-                  animals.filter(a=>a.estatus==="En proceso").length,
+                  animals.filter(a => a.estatus === "En proceso").length,
                   "En proceso",
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
                   "#D97706",
                   "#FEF3C7"
                 ],
                 [
-                  animals.filter(a=>a.estatus==="Adoptado").length,
+                  animals.filter(a => a.estatus === "Adoptado" || a.estatus === "Adoptada" || a.estatus === "Aprobada").length,
                   "Adoptados",
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>,
                   "#E11D48",
                   "#FFE4E6"
                 ],
                 [
-                  solicitudes.filter(s=>s.estatus==="Pendiente").length,
+                  solicitudes.filter(s => s.estatus === "Pendiente" || s.estatus === "En revisión" || !s.estatus).length,
                   "Pendientes",
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>,
                   "#059669",
@@ -4341,10 +4341,10 @@ export default function DoGood({initialUser=null,onLogout}){
                   <button onClick={()=>goPage("catalogo")} style={{fontSize:".8rem",color:T.accentDk,fontWeight:700,background:"none",border:"none",cursor:"pointer"}}>Ver todos</button>
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:12}}>
-                  {animals.filter(a=>a.estatus==="En adopción").slice(0,4).map((a,i)=>(
+                  {animals.filter(a => a.estatus === "En adopción" || a.estatus === "Disponible").slice(0,4).map((a,i)=>(
                     <AnimalRow key={a.id} a={a} user={user} onOpen={openAnimalModal} onApartar={apartar} favs={favs} onFav={toggleFav} idx={i}/>
                   ))}
-                  {!animals.filter(a=>a.estatus==="En adopción").length&&(
+                  {!animals.filter(a => a.estatus === "En adopción" || a.estatus === "Disponible").length&&(
                     <div style={{textAlign:"center",padding:40,color:T.muted,background:T.surface,borderRadius:T.r.lg,border:`1.5px dashed ${T.border}`}}>
                       <div style={{fontSize:"2.5rem",marginBottom:8}}>{IC.paw}</div>
                       <p style={{fontSize:".86rem"}}>No hay animales disponibles aún.</p>
