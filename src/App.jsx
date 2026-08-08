@@ -2964,7 +2964,9 @@ export default function DoGood({initialUser=null,onLogout}){
       const r = await apiFetch("animales", "list", "GET", p);
       if (r && r.ok && Array.isArray(r.animals) && r.animals.length > 0) {
         setAnimals(() => {
-          const combined = [...localSaved, ...r.animals];
+          // Filtrar animales demo ficticios (IDs 101-106) para que predominen los datos reales de la BD
+          const customLocal = localSaved.filter(a => Number(a.id) > 1000);
+          const combined = [...r.animals, ...customLocal];
           const unique = [];
           const map = new Map();
           for (const item of combined) {
@@ -2982,7 +2984,7 @@ export default function DoGood({initialUser=null,onLogout}){
       }
     } catch(e) {}
 
-    /* Fallback en modo demo/offline: combina animales creados + animales por defecto */
+    /* Fallback en modo demo/offline (sólo si no hay BD): combina creados + por defecto */
     const baseList = [...localSaved, ...DEFAULT_ANIMALS];
     const unique = [];
     const map = new Map();
