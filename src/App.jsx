@@ -3681,6 +3681,15 @@ export default function DoGood({initialUser=null,onLogout}){
     const petSexo = anim.sexo || a.animal_sexo || a.sexo || "No especificado";
     const petEspecie = anim.especie || a.especie || "Mascota";
     const petEdad = anim.edad ? `${anim.edad} ${Number(anim.edad) === 1 ? "año" : "años"}` : (a.edad ? `${a.edad}` : "Joven");
+    const petColor = anim.color || a.color || "No especificado";
+    const petPhoto = anim.foto_url || anim.foto || a.foto_url || a.animal_foto || null;
+    const petEmoji = anim.emoji || a.animal_emoji || a.emoji || "🐾";
+    const adopterName = sol?.guest_nombre || sol?.usuario_nombre || a.guest_nombre || a.usuario_nombre || user?.nombre || "Adoptante Responsable";
+    const rescuerName = anim.rescatista_nombre || a.rescatista_nombre || sol?.rescatista_nombre || "Refugio DoGood";
+    const certDate = sol?.fecha || new Date().toISOString().split("T")[0];
+    const certCode = `DG-CERT-2026-${(anim.id || a.id || 1).toString().padStart(4, "0")}`;
+    const signatureData = sol?.firma_digital || sol?.signature_data || sol?.firma || null;
+
     const handlePrintCert = () => {
       triggerCertPrint(anim, sol, user);
     };

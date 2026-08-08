@@ -5,23 +5,66 @@ require_once __DIR__ . '/mailer.php';
 setupCORS();
 
 $action = $_GET['action'] ?? 'list';
-$input  = json_decode(file_get_contents('php://input'), true) ?? [];
+$jsonInput = json_decode(file_get_contents('php://input'), true) ?? [];
+$input  = array_merge($_GET, $_POST, $jsonInput);
+$action = $input['action'] ?? $action;
 $db     = getDBConnection();
 
-// Auto-migración automática de columnas para bases de datos MySQL existentes
-try { $db->exec("ALTER TABLE solicitudes ADD COLUMN entrevista_iniciada TINYINT(1) NOT NULL DEFAULT 0"); } catch (\Throwable $exM0) {}
-try { $db->exec("ALTER TABLE solicitudes ADD COLUMN entrevista_conteo INT NOT NULL DEFAULT 0"); } catch (\Throwable $exM1) {}
-try { $db->exec("ALTER TABLE solicitudes ADD COLUMN documentacion_completada TINYINT(1) NOT NULL DEFAULT 0"); } catch (\Throwable $exM2) {}
-try { $db->exec("ALTER TABLE solicitudes ADD COLUMN motivo_rechazo TEXT DEFAULT NULL"); } catch (\Throwable $exM3) {}
-try { $db->exec("ALTER TABLE solicitudes ADD COLUMN comprobante_domicilio MEDIUMTEXT DEFAULT NULL"); } catch (\Throwable $exM4) {}
-try { $db->exec("ALTER TABLE solicitudes ADD COLUMN ine_documento MEDIUMTEXT DEFAULT NULL"); } catch (\Throwable $exM5) {}
-try { $db->exec("ALTER TABLE solicitudes ADD COLUMN foto_espacio_1 MEDIUMTEXT DEFAULT NULL"); } catch (\Throwable $exM6) {}
-try { $db->exec("ALTER TABLE solicitudes ADD COLUMN foto_espacio_2 MEDIUMTEXT DEFAULT NULL"); } catch (\Throwable $exM7) {}
-try { $db->exec("ALTER TABLE solicitudes ADD COLUMN foto_espacio_3 MEDIUMTEXT DEFAULT NULL"); } catch (\Throwable $exM8) {}
-try { $db->exec("ALTER TABLE solicitudes ADD COLUMN firma_digital MEDIUMTEXT DEFAULT NULL"); } catch (\Throwable $exM9) {}
+// Auto-creación y migración segura de tabla solicitudes
+if ($db) {
+    try {
+        $db->exec("CREATE TABLE IF NOT EXISTS solicitudes (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            animal_id INT NOT NULL,
+            rescatista_id INT DEFAULT 1,
+            usuario_id INT DEFAULT NULL,
+            guest_nombre VARCHAR(150) DEFAULT NULL,
+            guest_email VARCHAR(150) DEFAULT NULL,
+            guest_telefono VARCHAR(50) DEFAULT NULL,
+            vivienda VARCHAR(100) DEFAULT NULL,
+            ninos VARCHAR(50) DEFAULT NULL,
+            mascotas_actuales TEXT DEFAULT NULL,
+            experiencia_previa TEXT DEFAULT NULL,
+            tiene_veterinario VARCHAR(100) DEFAULT NULL,
+            motivacion TEXT DEFAULT NULL,
+            fotos_espacio TEXT DEFAULT NULL,
+            pregunta_predeterminada TEXT DEFAULT NULL,
+            firma_digital MEDIUMTEXT DEFAULT NULL,
+            estatus VARCHAR(50) NOT NULL DEFAULT 'Pendiente',
+            fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
+            animal_nombre VARCHAR(150) DEFAULT NULL,
+            entrevista_iniciada TINYINT(1) NOT NULL DEFAULT 0,
+            entrevista_conteo INT NOT NULL DEFAULT 0,
+            documentacion_completada TINYINT(1) NOT NULL DEFAULT 0,
+            motivo_rechazo TEXT DEFAULT NULL,
+            comprobante_domicilio MEDIUMTEXT DEFAULT NULL,
+            ine_documento MEDIUMTEXT DEFAULT NULL,
+            foto_espacio_1 MEDIUMTEXT DEFAULT NULL,
+            foto_espacio_2 MEDIUMTEXT DEFAULT NULL,
+            foto_espacio_3 MEDIUMTEXT DEFAULT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    } catch (\Throwable $eTable) {}
+
+    try { $db->exec("ALTER TABLE solicitudes ADD COLUMN rescatista_id INT DEFAULT 1"); } catch (\Throwable $eM0) {}
+    try { $db->exec("ALTER TABLE solicitudes ADD COLUMN animal_nombre VARCHAR(150) DEFAULT NULL"); } catch (\Throwable $eM1) {}
+    try { $db->exec("ALTER TABLE solicitudes ADD COLUMN entrevista_iniciada TINYINT(1) NOT NULL DEFAULT 0"); } catch (\Throwable $exM0) {}
+    try { $db->exec("ALTER TABLE solicitudes ADD COLUMN entrevista_conteo INT NOT NULL DEFAULT 0"); } catch (\Throwable $exM1) {}
+    try { $db->exec("ALTER TABLE solicitudes ADD COLUMN documentacion_completada TINYINT(1) NOT NULL DEFAULT 0"); } catch (\Throwable $exM2) {}
+    try { $db->exec("ALTER TABLE solicitudes ADD COLUMN motivo_rechazo TEXT DEFAULT NULL"); } catch (\Throwable $exM3) {}
+    try { $db->exec("ALTER TABLE solicitudes ADD COLUMN comprobante_domicilio MEDIUMTEXT DEFAULT NULL"); } catch (\Throwable $exM4) {}
+    try { $db->exec("ALTER TABLE solicitudes ADD COLUMN ine_documento MEDIUMTEXT DEFAULT NULL"); } catch (\Throwable $exM5) {}
+    try { $db->exec("ALTER TABLE solicitudes ADD COLUMN foto_espacio_1 MEDIUMTEXT DEFAULT NULL"); } catch (\Throwable $exM6) {}
+    try { $db->exec("ALTER TABLE solicitudes ADD COLUMN foto_espacio_2 MEDIUMTEXT DEFAULT NULL"); } catch (\Throwable $exM7) {}
+    try { $db->exec("ALTER TABLE solicitudes ADD COLUMN foto_espacio_3 MEDIUMTEXT DEFAULT NULL"); } catch (\Throwable $exM8) {}
+    try { $db->exec("ALTER TABLE solicitudes ADD COLUMN firma_digital MEDIUMTEXT DEFAULT NULL"); } catch (\Throwable $exM9) {}
+}
 
 if ($action === 'list') {
-    // CONDICIÓN 1: Eliminar index/solicitudes borrador pendientes que hayan superado 24 horas sin concretarse
+    if (!$db) {
+        echo json_encode(['ok' => true, 'solicitudes' => []]);
+        exit;
+    }
+
     try {
         $db->exec("DELETE FROM solicitudes WHERE estatus IN ('Pendiente', 'En revisión') AND fecha < DATE_SUB(NOW(), INTERVAL 24 HOUR)");
     } catch (\Throwable $e24) {}
@@ -44,17 +87,29 @@ if ($action === 'list') {
 
     $whereClause = !empty($where) ? "WHERE " . implode(" AND ", $where) : "";
 
-    $sql = "SELECT s.*, 
-                   COALESCE(NULLIF(s.animal_nombre, ''), a.nombre) AS animal_nombre, a.raza AS animal_raza, a.emoji AS animal_emoji, a.color AS animal_color, a.foto_url AS animal_foto,
-                   u.nombre AS usuario_nombre, u.email AS usuario_email, u.telefono AS usuario_telefono, u.abierto_a_opciones AS usuario_abierto
-            FROM solicitudes s
-            LEFT JOIN animales a ON s.animal_id = a.id
-            LEFT JOIN usuarios u ON s.usuario_id = u.id
-            {$whereClause}
-            ORDER BY s.id DESC";
-    $stmt = $db->prepare($sql);
-    $stmt->execute($params);
-    $solicitudes = $stmt->fetchAll();
+    $solicitudes = [];
+    try {
+        $sql = "SELECT s.*, 
+                       COALESCE(NULLIF(s.animal_nombre, ''), a.nombre) AS animal_nombre, a.raza AS animal_raza, a.emoji AS animal_emoji, a.color AS animal_color, a.foto_url AS animal_foto,
+                       u.nombre AS usuario_nombre, u.email AS usuario_email, u.telefono AS usuario_telefono, u.abierto_a_opciones AS usuario_abierto
+                FROM solicitudes s
+                LEFT JOIN animales a ON s.animal_id = a.id
+                LEFT JOIN usuarios u ON s.usuario_id = u.id
+                {$whereClause}
+                ORDER BY s.id DESC";
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $solicitudes = $stmt->fetchAll() ?: [];
+    } catch (\Throwable $eSql) {
+        try {
+            $sqlSimple = "SELECT s.* FROM solicitudes s {$whereClause} ORDER BY s.id DESC";
+            $stmtSimple = $db->prepare($sqlSimple);
+            $stmtSimple->execute($params);
+            $solicitudes = $stmtSimple->fetchAll() ?: [];
+        } catch (\Throwable $eS) {
+            $solicitudes = [];
+        }
+    }
 
     echo json_encode(['ok' => true, 'solicitudes' => $solicitudes]);
     exit;
