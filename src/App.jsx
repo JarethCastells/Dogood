@@ -5230,14 +5230,67 @@ export default function DoGood({initialUser=null,onLogout}){
                   </div>
 
                   {totalRejected === 0 ? (
-                    <div style={{background:T.surface,borderRadius:T.r.xl,border:`1.5px dashed ${T.border}`,padding:"48px 24px",textAlign:"center"}}>
-                      <div style={{fontSize:"3.5rem",marginBottom:10}}>✨ 📋</div>
-                      <h3 style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:"1.4rem",color:T.ink,marginBottom:6}}>
-                        No hay solicitudes rechazadas
+                    <div style={{
+                      background: "linear-gradient(180deg, #FFFFFF 0%, #FFFDF8 100%)",
+                      borderRadius: 24,
+                      border: "1.5px solid rgba(226, 232, 240, 0.8)",
+                      padding: "54px 28px",
+                      textAlign: "center",
+                      boxShadow: "0 12px 32px rgba(15, 69, 162, 0.04)",
+                      position: "relative",
+                      overflow: "hidden"
+                    }}>
+                      <div style={{
+                        position: "absolute",
+                        right: -15,
+                        bottom: -15,
+                        fontSize: "8.5rem",
+                        opacity: 0.04,
+                        pointerEvents: "none",
+                        userSelect: "none"
+                      }}>🐾</div>
+
+                      <div style={{
+                        width: 76,
+                        height: 76,
+                        borderRadius: "50%",
+                        background: "linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%)",
+                        color: "#DC2626",
+                        fontSize: "2.2rem",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        margin: "0 auto 16px",
+                        boxShadow: "0 8px 24px rgba(220,38,38,0.12)",
+                        border: "2.5px solid #FECACA"
+                      }}>
+                        ✨
+                      </div>
+
+                      <h3 style={{
+                        fontFamily: "'Syne', sans-serif",
+                        fontWeight: 800,
+                        fontSize: "1.45rem",
+                        color: "#0F45A2",
+                        marginBottom: 8,
+                        letterSpacing: -0.3
+                      }}>
+                        ¡Todo al día! No hay solicitudes rechazadas
                       </h3>
-                      <p style={{fontSize:".88rem",color:T.sub,maxWidth:420,margin:"0 auto 16px",lineHeight:1.6}}>
-                        No existen solicitudes en el historial de rechazados.
+
+                      <p style={{
+                        fontSize: ".9rem",
+                        color: "#64748B",
+                        maxWidth: 460,
+                        margin: "0 auto 20px",
+                        lineHeight: 1.6
+                      }}>
+                        No existen solicitudes rechazadas en el historial. Todos los registros y procesos de adopción activos se encuentran en curso o autorizados legítimamente.
                       </p>
+
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#EFF6FF", padding: "6px 18px", borderRadius: 50, border: "1px solid #BFDBFE", fontSize: ".8rem", fontWeight: 700, color: "#1E40AF" }}>
+                        <span>🛡️</span> Historial Limpio y Sincronizado
+                      </div>
                     </div>
                   ) : (
                     <div style={{display:"grid",gap:20}}>
