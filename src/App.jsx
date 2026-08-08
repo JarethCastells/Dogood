@@ -3681,7 +3681,8 @@ export default function DoGood({initialUser=null,onLogout}){
     const petSexo = anim.sexo || a.animal_sexo || a.sexo || "No especificado";
     const petEspecie = anim.especie || a.especie || "Mascota";
     const petEdad = anim.edad ? `${anim.edad} ${Number(anim.edad) === 1 ? "año" : "años"}` : (a.edad ? `${a.edad}` : "Joven");
-    const petColor = anim.color || a.color || "No especificado";
+    const rawColor = anim.color || a.color || "";
+    const petColor = rawColor && !rawColor.includes("gradient") ? rawColor : "No especificado";
     const petPhoto = anim.foto_url || anim.foto || a.foto_url || a.animal_foto || null;
     const petEmoji = anim.emoji || a.animal_emoji || a.emoji || "🐾";
     const adopterName = sol?.guest_nombre || sol?.usuario_nombre || a.guest_nombre || a.usuario_nombre || user?.nombre || "Adoptante Responsable";
@@ -3952,27 +3953,6 @@ export default function DoGood({initialUser=null,onLogout}){
               }}
             >
               <span>📄</span> Carta de Compromiso (PDF)
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (navigator.clipboard) {
-                  navigator.clipboard.writeText(window.location.href);
-                  alert("¡Enlace copiado al portapapeles!");
-                }
-              }}
-              style={{
-                padding: "13px 18px",
-                border: `1.5px solid ${T.border}`,
-                borderRadius: T.r.md,
-                background: T.surface,
-                color: T.ink,
-                fontWeight: 700,
-                fontSize: ".86rem",
-                cursor: "pointer"
-              }}
-            >
-              🔗 Compartir
             </button>
           </div>
         </div>
