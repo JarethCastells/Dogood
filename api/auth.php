@@ -178,9 +178,16 @@ if ($action === 'update') {
         exit;
     }
 
-    $sql = "UPDATE usuarios SET nombre = IF(? != '', ?, nombre), email = IF(? != '', ?, email), telefono = ?, rol = ? WHERE id = ?";
-    $stmt = $db->prepare($sql);
-    $stmt->execute([$nombre, $nombre, $email, $email, $telefono, $rol, $id]);
+    if ($db) {
+        try {
+            $sql = "UPDATE usuarios SET nombre = IF(? != '', ?, nombre), email = IF(? != '', ?, email), telefono = ?, rol = ? WHERE id = ?";
+            $stmt = $db->prepare($sql);
+            $stmt->execute([$nombre, $nombre, $email, $email, $telefono, $rol, $id]);
+        } catch (\Throwable $eUpdate) {
+            echo json_encode(['ok' => false, 'error' => 'Error al actualizar usuario: ' . $eUpdate->getMessage()]);
+            exit;
+        }
+    }
 
     echo json_encode(['ok' => true]);
     exit;
@@ -190,18 +197,42 @@ if ($action === 'delete') {
     $id    = intval($input['id'] ?? 0);
     $email = trim($input['email'] ?? '');
 
-    if ($id > 0) {
-        $stmt = $db->prepare("DELETE FROM usuarios WHERE id = ?");
-        $stmt->execute([$id]);
-    } else if (!empty($email)) {
-        $stmt = $db->prepare("DELETE FROM usuarios WHERE LOWER(email) = LOWER(?)");
-        $stmt->execute([$email]);
-    } else {
+    if ($id <= 0 && !empty($email) && $db) {
+        try {
+            $stmtFind = $db->prepare("SELECT id FROM usuarios WHERE LOWER(email) = LOWER(?)");
+            $stmtFind->execute([$email]);
+            $foundU = $stmtFind->fetch();
+            if ($foundU) {
+                $id = intval($foundU['id']);
+            }
+        } catch (\Throwable $eF) {}
+    }
+
+    if ($id <= 0 && empty($email)) {
         echo json_encode(['ok' => false, 'error' => 'ID o email de usuario inválido']);
         exit;
     }
 
-    echo json_encode(['ok' => true]);
+    if ($db) {
+        try {
+            // Eliminar o reasignar llaves foráneas en solicitudes y animales para evitar fallo de integridad SQL 1451
+            if ($id > 0) {
+                try { $db->prepare("DELETE FROM solicitudes WHERE rescatista_id = ? OR usuario_id = ?")->execute([$id, $id]); } catch (\Throwable $eS) {}
+                try { $db->prepare("UPDATE animales SET rescatista_id = 1 WHERE rescatista_id = ?")->execute([$id]); } catch (\Throwable $eA) {}
+                
+                $stmt = $db->prepare("DELETE FROM usuarios WHERE id = ?");
+                $stmt->execute([$id]);
+            } else if (!empty($email)) {
+                $stmt = $db->prepare("DELETE FROM usuarios WHERE LOWER(email) = LOWER(?)");
+                $stmt->execute([$email]);
+            }
+        } catch (\Throwable $eDelete) {
+            echo json_encode(['ok' => false, 'error' => 'Error al eliminar de la base de datos: ' . $eDelete->getMessage()]);
+            exit;
+        }
+    }
+
+    echo json_encode(['ok' => true, 'message' => 'Usuario eliminado exitosamente']);
     exit;
 }
 
