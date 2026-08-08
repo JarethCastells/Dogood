@@ -4,7 +4,7 @@ import FormularioWizard from "./FormularioWizard.jsx";
 /* ==========================================
    CONFIG
 ========================================== */
-const API = (import.meta.env.VITE_API_URL || "http://localhost/dogood-v4/api").replace(/\/+$/, "");
+const API = (import.meta.env.VITE_API_URL || "https://teotek.com.mx/api").replace(/\/+$/, "");
 
 const GRADIENTS = [
   "linear-gradient(135deg,#1653BB 0%,#4C78CC 100%)",
@@ -517,14 +517,33 @@ export default function CatalogoPublico({ onLogin, onGoHome }) {
   useEffect(() => {
     (async () => {
       setLoading(true);
+      let loadedAnimals = [];
       try {
         const res  = await fetch(`${API}/animales.php?action=list`, { headers:{ "Content-Type":"application/json" } });
         const data = await res.json();
         if (data.ok && Array.isArray(data.animals)) {
-          setAnimals(data.animals);
-          setIsDemoData(false);
-        } else throw new Error("fallback");
-      } catch {
+          loadedAnimals = data.animals;
+        }
+      } catch (e) {}
+
+      let localSaved = [];
+      try { localSaved = JSON.parse(localStorage.getItem("dogood_custom_animals") || "[]"); } catch {}
+      const customLocal = localSaved.filter(a => Number(a.id) > 1000 && Number(a.id) < 9000);
+
+      const combined = [...loadedAnimals, ...customLocal];
+      const unique = [];
+      const map = new Map();
+      for (const item of combined) {
+        if (item && item.id && !map.has(item.id)) {
+          map.set(item.id, true);
+          unique.push(item);
+        }
+      }
+
+      if (unique.length > 0) {
+        setAnimals(unique);
+        setIsDemoData(false);
+      } else {
         setAnimals(DEMO_ANIMALS);
         setIsDemoData(true);
       }

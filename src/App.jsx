@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 
 const LOCAL_API = "http://localhost:8000/api";
-const REMOTE_API = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
+const REMOTE_API = (import.meta.env.VITE_API_URL || "https://teotek.com.mx/api").replace(/\/+$/, "");
 
 function compressBase64Image(dataUrl, maxWidth = 800, maxHeight = 800, quality = 0.55) {
   return new Promise((resolve) => {
@@ -2959,36 +2959,21 @@ export default function DoGood({initialUser=null,onLogout}){
     let localSaved = [];
     try { localSaved = JSON.parse(localStorage.getItem("dogood_custom_animals") || "[]"); } catch {}
     
+    let apiAnimals = [];
     try {
       const p = user.rol === "rescatista" ? { rescatista_id: user.id } : null;
       const r = await apiFetch("animales", "list", "GET", p);
-      if (r && r.ok && Array.isArray(r.animals) && r.animals.length > 0) {
-        setAnimals(() => {
-          // Filtrar animales demo ficticios (IDs 101-106) para que predominen los datos reales de la BD
-          const customLocal = localSaved.filter(a => Number(a.id) > 1000);
-          const combined = [...r.animals, ...customLocal];
-          const unique = [];
-          const map = new Map();
-          for (const item of combined) {
-            if (item && item.id && !map.has(item.id)) {
-              if (user.rol === "admin" || Number(item.rescatista_id) === Number(user.id)) {
-                map.set(item.id, true);
-                unique.push(item);
-              }
-            }
-          }
-          return unique;
-        });
-        setIsDemoData(false);
-        return;
+      if (r && r.ok && Array.isArray(r.animals)) {
+        apiAnimals = r.animals;
       }
     } catch(e) {}
 
-    /* Fallback en modo demo/offline (sólo si no hay BD): combina creados + por defecto */
-    const baseList = [...localSaved, ...DEFAULT_ANIMALS];
+    // Filtrar cualquier animal ficticio demo (IDs 101-106 y 9001-9008)
+    const customLocal = localSaved.filter(a => Number(a.id) > 1000 && Number(a.id) < 9000);
+    const combined = [...apiAnimals, ...customLocal];
     const unique = [];
     const map = new Map();
-    for (const item of baseList) {
+    for (const item of combined) {
       if (item && item.id && !map.has(item.id)) {
         if (user.rol === "admin" || !item.rescatista_id || Number(item.rescatista_id) === Number(user.id)) {
           map.set(item.id, true);
@@ -2996,8 +2981,14 @@ export default function DoGood({initialUser=null,onLogout}){
         }
       }
     }
-    setAnimals(unique);
-    setIsDemoData(true);
+
+    if (unique.length > 0) {
+      setAnimals(unique);
+      setIsDemoData(false);
+    } else {
+      setAnimals(DEFAULT_ANIMALS);
+      setIsDemoData(true);
+    }
   },[user]);
 
   const loadSols=useCallback(async()=>{
