@@ -192,3 +192,96 @@ function getWelcomeEmailHTML($name, $email, $password) {
 </html>
 HTML;
 }
+
+/**
+ * Enviar notificación por correo de una nueva solicitud de adopción al Rescatista y al Admin
+ */
+function sendNewAdoptionNotificationSMTP($rescuerEmail, $rescuerName, $petName, $adopterName, $adopterEmail, $adopterPhone, $vivienda, $motivacion, $fotosEspacio = '') {
+    $subject = "🐾 ¡Nueva solicitud de adopción para {$petName}!";
+    $htmlContent = getNewAdoptionEmailHTML($rescuerName, $petName, $adopterName, $adopterEmail, $adopterPhone, $vivienda, $motivacion, $fotosEspacio);
+
+    $adminEmail = 'dogood@teotek.com.mx';
+
+    // 1. Enviar al rescatista responsable de la mascota
+    if (!empty($rescuerEmail)) {
+        sendSocketSMTP($rescuerEmail, $rescuerName, $subject, $htmlContent, 587, 'tls');
+    }
+
+    // 2. Enviar copia al Administrador de la plataforma
+    if (strtolower($rescuerEmail) !== strtolower($adminEmail)) {
+        sendSocketSMTP($adminEmail, "Admin DoGood", $subject, $htmlContent, 587, 'tls');
+    }
+}
+
+function getNewAdoptionEmailHTML($rescuerName, $petName, $adopterName, $adopterEmail, $adopterPhone, $vivienda, $motivacion, $fotosEspacio = '') {
+    $safeRescuer = htmlspecialchars($rescuerName);
+    $safePet     = htmlspecialchars($petName);
+    $safeAdopter = htmlspecialchars($adopterName);
+    $safeEmail   = htmlspecialchars($adopterEmail);
+    $safePhone   = htmlspecialchars($adopterPhone);
+    $safeVivienda= htmlspecialchars($vivienda);
+    $safeMotiv   = htmlspecialchars($motivacion);
+    $safeFotos   = htmlspecialchars($fotosEspacio);
+
+    $fotoSection = !empty($safeFotos) 
+        ? "<div class='cred-item'><strong>Fotos del espacio:</strong> <a href='{$safeFotos}' target='_blank' style='color:#1653BB;'>Ver fotografías ↗</a></div>" 
+        : "";
+
+    return <<<HTML
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Nueva Solicitud de Adopción</title>
+    <style>
+        body { font-family: 'Plus Jakarta Sans', Arial, sans-serif; background-color: #FFF8DF; margin: 0; padding: 24px; color: #111111; }
+        .email-card { max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 24px; border: 1.5px solid #DDD5D6; overflow: hidden; box-shadow: 0 12px 40px rgba(22,83,187,0.12); }
+        .header { background: linear-gradient(135deg, #1653BB 0%, #0F45A2 100%); padding: 32px 26px; text-align: center; color: #ffffff; }
+        .body { padding: 30px 26px; }
+        .greeting { font-size: 20px; font-weight: 800; color: #1653BB; margin-bottom: 12px; }
+        .p-text { font-size: 15px; line-height: 1.7; color: #3C3A3A; margin-bottom: 20px; }
+        .cred-box { background: #FFF7DA; border: 1.5px solid #F0C21D; border-radius: 16px; padding: 20px; margin: 20px 0; }
+        .cred-item { font-size: 14px; margin-bottom: 10px; color: #111111; }
+        .cred-item strong { color: #1653BB; min-width: 140px; display: inline-block; }
+        .footer { background: #111111; color: rgba(255,255,255,0.6); padding: 24px 26px; text-align: center; font-size: 13px; line-height: 1.6; }
+    </style>
+</head>
+<body>
+    <div class="email-card">
+        <div class="header">
+            <div style="font-size:42px; margin-bottom:8px;">🐶 📬</div>
+            <div style="font-size:24px; font-weight:800; color:#ffffff;">¡Nueva Solicitud de Adopción!</div>
+            <div style="font-size:13px; color:rgba(255,255,255,0.9); font-weight:700;">Para {$safePet} en DoGood</div>
+        </div>
+        <div class="body">
+            <div class="greeting">Hola, {$safeRescuer} 🐾</div>
+            <p class="p-text">
+                Has recibido una nueva postulación para adoptar a <strong>{$safePet}</strong>. A continuación se detallan los datos enviados por el adoptante:
+            </p>
+
+            <div class="cred-box">
+                <div style="font-size:13px; font-weight:800; color:#1653BB; text-transform:uppercase; letter-spacing:1px; margin-bottom:12px;">
+                    📋 Datos del Candidato
+                </div>
+                <div class="cred-item"><strong>Mascota solicitada:</strong> {$safePet}</div>
+                <div class="cred-item"><strong>Nombre del adoptante:</strong> {$safeAdopter}</div>
+                <div class="cred-item"><strong>Correo electrónico:</strong> {$safeEmail}</div>
+                <div class="cred-item"><strong>Teléfono / WhatsApp:</strong> {$safePhone}</div>
+                <div class="cred-item"><strong>Tipo de vivienda:</strong> {$safeVivienda}</div>
+                {$fotoSection}
+                <div class="cred-item" style="margin-bottom:0;"><strong>Mensaje / Motivación:</strong> {$safeMotiv}</div>
+            </div>
+
+            <p class="p-text">
+                Ingresa a tu panel de DoGood o contacta directamente al candidato vía WhatsApp para realizar la entrevista de adopción.
+            </p>
+        </div>
+        <div class="footer">
+            <strong>DoGood Adopciones México</strong><br>
+            Impulsando el bienestar animal y la adopción responsable.
+        </div>
+    </div>
+</body>
+</html>
+HTML;
+}

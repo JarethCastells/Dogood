@@ -73,6 +73,69 @@ const G = `
   button,a,[role="button"]{cursor:url("${PAW_CURSOR}") 4 2,pointer;transition:transform .22s ease,box-shadow .22s ease,filter .22s ease,background-color .22s ease,border-color .22s ease,color .22s ease;}
   button:hover,a:hover,[role="button"]:hover{filter:saturate(1.08);}
   button:active,a:active,[role="button"]:active{transform:translateY(1px) scale(.98);}
+
+  .pretty-inventory-row {
+    display: grid;
+    grid-template-columns: minmax(64px, auto) 1.2fr 1fr 1fr auto;
+    gap: 18px;
+    align-items: center;
+  }
+  @media (max-width: 880px) {
+    .pretty-inventory-row {
+      grid-template-columns: auto 1fr !important;
+      gap: 14px !important;
+    }
+    .pretty-inventory-row .col-health,
+    .pretty-inventory-row .col-shelter {
+      grid-column: 1 / -1;
+    }
+    .pretty-inventory-row .col-actions {
+      grid-column: 1 / -1;
+      display: flex !important;
+      flex-direction: row !important;
+      justify-content: space-between !important;
+      align-items: center !important;
+      width: 100% !important;
+      margin-top: 6px !important;
+      padding-top: 10px !important;
+      border-top: 1px dashed ${T.border} !important;
+    }
+  }
+  @media (max-width: 540px) {
+    .pretty-inventory-row {
+      grid-template-columns: 1fr !important;
+      padding: 14px !important;
+    }
+    .pretty-inventory-row .col-avatar {
+      justify-content: center !important;
+      margin: 0 auto !important;
+    }
+    .pretty-inventory-row .col-info {
+      text-align: center !important;
+    }
+    .pretty-inventory-row .col-info > div {
+      justify-content: center !important;
+    }
+    .pretty-inventory-row .col-health > div {
+      justify-content: center !important;
+    }
+    .pretty-inventory-row .col-shelter {
+      text-align: center !important;
+      justify-content: center !important;
+    }
+    .pretty-inventory-row .col-shelter > div {
+      justify-content: center !important;
+    }
+    .pretty-inventory-row .col-actions {
+      flex-direction: column !important;
+      gap: 8px !important;
+      align-items: stretch !important;
+    }
+    .pretty-inventory-row .col-actions button {
+      width: 100% !important;
+    }
+  }
+
   @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
   @keyframes shimmer{0%{background-position:-500px 0}100%{background-position:500px 0}}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
@@ -177,10 +240,14 @@ function AnimalCard({ animal: a, onOpen, onCopy, copiedId }) {
         >
           {isCopied ? "✓" : "🔗"}
         </button>
-        {/* Cuota badge */}
-        {Number(a.cuota) > 0 && (
+        {/* Cuota badge / Adopción Gratuita */}
+        {Number(a.cuota) > 0 || a.aplica_cuota ? (
           <div style={{ position:"absolute", bottom:8, left:10, background:"rgba(240,194,29,.93)", color:"#6B4200", borderRadius:T.r.full, fontSize:".68rem", fontWeight:800, padding:"3px 10px" }}>
-            💰 ${Number(a.cuota).toLocaleString()} MXN
+            💰 ${Number(a.cuota || 0).toLocaleString()} MXN (Cuota de Recuperación)
+          </div>
+        ) : (
+          <div style={{ position:"absolute", bottom:8, left:10, background:"rgba(16,185,129,.93)", color:"#fff", borderRadius:T.r.full, fontSize:".68rem", fontWeight:800, padding:"3px 10px" }}>
+            💚 Adopción Gratuita / Sin Cuota
           </div>
         )}
       </div>
@@ -198,9 +265,18 @@ function AnimalCard({ animal: a, onOpen, onCopy, copiedId }) {
           <div style={{ fontSize:".75rem", color:T.sub }}>{a.raza}</div>
         </div>
 
-        {/* Tags */}
+        {/* Health Badges & Tags */}
         <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
-          {[tallaLabel(a.talla), a.peso, a.edad ? `${a.edad} años` : null, a.caracter]
+          {[
+            tallaLabel(a.talla),
+            a.peso,
+            a.edad ? `${a.edad} años` : null,
+            a.caracter,
+            a.desparasitado !== false && a.desparasitado !== 0 ? "🪱 Desparasitado/a" : null,
+            a.esterilizado !== false && a.esterilizado !== 0 ? "✂️ Esterilizado/a" : null,
+            a.vacunas ? `💉 ${a.vacunas}` : "💉 Vacunas al día",
+            a.microchip ? `🏷️ Chip #${a.microchip}` : null
+          ]
             .filter(Boolean).map(tag => (
               <span key={tag} style={{ padding:"3px 9px", borderRadius:T.r.full, background:T.bg, border:`1px solid ${T.border}`, fontSize:".69rem", color:T.sub, fontWeight:500 }}>
                 {tag}
@@ -252,6 +328,127 @@ function AnimalCard({ animal: a, onOpen, onCopy, copiedId }) {
   );
 }
 
+function PrettyInventoryRow({ animal, onOpen, onCopy, copiedId }) {
+  const folio = `DG-PET-${(animal.id || 9001).toString().padStart(4, "0")}`;
+  const isAdopted = animal.estatus === "Adoptado";
+  const inProcess = animal.estatus === "En proceso";
+  const isCopied = copiedId === animal.id;
+
+  return (
+    <div
+      className="pretty-inventory-row"
+      style={{
+        background: T.surface,
+        borderRadius: T.r.md,
+        border: `1.5px solid ${T.border}`,
+        padding: "16px 20px",
+        boxShadow: T.shadow.sm,
+        transition: "all .2s ease"
+      }}
+      onMouseEnter={e => {
+        e.currentTarget.style.borderColor = T.blue;
+        e.currentTarget.style.boxShadow = T.shadow.md;
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.borderColor = T.border;
+        e.currentTarget.style.boxShadow = T.shadow.sm;
+      }}
+    >
+      {/* Col 1: Photo / Avatar */}
+      <div className="col-avatar" style={{ display: "flex", alignItems: "center" }}>
+        <div style={{
+          width: 64,
+          height: 64,
+          borderRadius: 14,
+          overflow: "hidden",
+          border: `2px solid ${isAdopted ? "#A855F7" : inProcess ? "#F59E0B" : T.blue}`,
+          flexShrink: 0,
+          background: animal.color || T.bg,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center"
+        }}>
+          {animal.foto_url ? (
+            <img src={animal.foto_url} alt={animal.nombre} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          ) : (
+            <span style={{ fontSize: "2rem" }}>{animal.emoji || "🐾"}</span>
+          )}
+        </div>
+      </div>
+
+      {/* Col 2: Name & Specs */}
+      <div className="col-info">
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "1.2rem", fontWeight: 800, color: T.ink }}>
+            {animal.nombre}
+          </span>
+          <span style={{ fontSize: ".68rem", fontFamily: "monospace", fontWeight: 800, background: "#EFF6FF", color: T.blue, padding: "2px 8px", borderRadius: 50, border: "1px solid #BFDBFE" }}>
+            {folio}
+          </span>
+        </div>
+        <div style={{ fontSize: ".82rem", color: T.sub, marginTop: 3, fontWeight: 600 }}>
+          {animal.raza || "Mestizo"} • {animal.sexo || "Sexo N/D"} • {animal.edad ? `${animal.edad} año(s)` : "Joven"}
+        </div>
+        <div style={{ fontSize: ".74rem", color: T.muted, marginTop: 2 }}>
+          Talla: <strong>{animal.talla || "Mediana"}</strong> • Peso: {animal.peso || "N/D"}
+        </div>
+      </div>
+
+      {/* Col 3: Expediente / Carácter */}
+      <div className="col-health">
+        <div style={{ fontSize: ".7rem", fontWeight: 800, color: T.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>
+          Expediente Clínico
+        </div>
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+          <span style={{ fontSize: ".7rem", background: "#ECFDF5", color: "#047857", padding: "2px 8px", borderRadius: 50, fontWeight: 700 }}>
+            ✂️ Esterilizado
+          </span>
+          <span style={{ fontSize: ".7rem", background: "#EFF6FF", color: "#1D4ED8", padding: "2px 8px", borderRadius: 50, fontWeight: 700 }}>
+            💉 Vacunas al día
+          </span>
+          <span style={{ fontSize: ".7rem", background: "#FFFBEB", color: "#B45309", padding: "2px 8px", borderRadius: 50, fontWeight: 700 }}>
+            🩺 {animal.caracter || "Tranquilo/a"}
+          </span>
+        </div>
+      </div>
+
+      {/* Col 4: Refugio / Ubicación */}
+      <div className="col-shelter">
+        <div style={{ fontSize: ".78rem", fontWeight: 700, color: T.ink, display: "flex", alignItems: "center", gap: 4 }}>
+          <span>📍</span> Querétaro, MX
+        </div>
+        <div style={{ fontSize: ".74rem", color: T.muted, marginTop: 2 }}>
+          🏠 {animal.rescatista_nombre || "Refugio DoGood"}
+        </div>
+      </div>
+
+      {/* Col 5: Actions */}
+      <div className="col-actions" style={{ textAlign: "right" }}>
+        <div style={{ marginBottom: 6 }}>
+          <StatusBadge estatus={animal.estatus} />
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <button
+            type="button"
+            onClick={e => onCopy(animal, e)}
+            title="Compartir link"
+            style={{ padding: "8px 12px", borderRadius: 50, border: `1px solid ${T.border}`, background: T.surface, color: T.sub, fontWeight: 700, fontSize: ".76rem", cursor: "pointer" }}
+          >
+            {isCopied ? "✓ Copiado" : "🔗 Compartir"}
+          </button>
+          <button
+            type="button"
+            onClick={() => onOpen(animal)}
+            style={{ padding: "8px 18px", borderRadius: 50, border: "none", background: T.blue, color: "#fff", fontWeight: 700, fontSize: ".8rem", cursor: "pointer" }}
+          >
+            Solicitar Adopción 🐾
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ==========================================
    MAIN COMPONENT
 ========================================== */
@@ -260,6 +457,7 @@ export default function CatalogoPublico({ onLogin, onGoHome }) {
   const [loading,      setLoading]      = useState(true);
   const [isDemoData,   setIsDemoData]   = useState(false);
   const [tabMode,      setTabMode]      = useState("en_adopcion"); // "en_adopcion" | "adoptados"
+  const [viewMode,     setViewMode]     = useState("list");        // "list" | "grid"
   const [search,       setSearch]       = useState("");
   const [filterSp,     setFilterSp]     = useState("all");  // species
   const [filterSz,     setFilterSz]     = useState("all");  // size
@@ -379,15 +577,18 @@ export default function CatalogoPublico({ onLogin, onGoHome }) {
   }, [selectedAnimal]);
 
   /* ---- Copy link ---- */
-  const copyLink = (animal, e) => {
-    e.stopPropagation();
+  const copyLink = (param1, param2) => {
+    const e = (param2 && typeof param2.stopPropagation === "function") ? param2 : (param1 && typeof param1.stopPropagation === "function") ? param1 : null;
+    const animal = (param1 && param1.id) ? param1 : (param2 && param2.id) ? param2 : null;
+    try { e?.stopPropagation?.(); } catch {}
+    if (!animal) return;
     const link = `${window.location.origin}/adoptar?pet=${animal.id}`;
     const apply = () => {
       setCopiedId(animal.id);
       setTimeout(() => setCopiedId(null), 2200);
-      toast$(`🔗 Link de ${animal.nombre} copiado — pégalo en WhatsApp o Facebook`, "success");
+      toast$(`🔗 Link de ${animal.nombre || "mascota"} copiado — pégalo en WhatsApp o Facebook`, "success");
     };
-    if (navigator.clipboard) {
+    if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(link).then(apply).catch(() => {
         const el = document.createElement("textarea");
         el.value = link; el.style.position = "fixed"; el.style.opacity = "0";
@@ -413,16 +614,15 @@ export default function CatalogoPublico({ onLogin, onGoHome }) {
       window.history.replaceState({}, "", "/adoptar");
   };
 
-  /* ---- Filters ---- */
+  /* ---- Filters (excluye siempre a las mascotas ya adoptadas) ---- */
   const filtered = animals.filter(a => {
-    const isAdopted = a.estatus === "Adoptado";
-    const mMode = tabMode === "adoptados" ? isAdopted : (a.estatus === "En adopción" || !a.estatus);
+    if (a.estatus === "Adoptado") return false;
     const q    = search.toLowerCase();
     const ms   = !q || a.nombre.toLowerCase().includes(q) || (a.raza||"").toLowerCase().includes(q) || (a.historia||"").toLowerCase().includes(q);
     const mSp  = filterSp  === "all" || a.especie === filterSp;
     const norm = (a.talla || "").toLowerCase().replace("ñ","n");
     const mSz  = filterSz  === "all" || norm.includes(filterSz);
-    return mMode && ms && mSp && mSz;
+    return ms && mSp && mSz;
   });
 
   /* ==========================================
@@ -466,15 +666,6 @@ export default function CatalogoPublico({ onLogin, onGoHome }) {
                 Modo demo
               </span>
             )}
-            <button
-              id="btn-iniciar-sesion"
-              onClick={() => setShowLoginModal(true)}
-              style={{ padding:"9px 20px", border:`1.5px solid ${T.blue}`, borderRadius:T.r.full, background:"transparent", color:T.blue, fontWeight:700, fontSize:".83rem", cursor:"pointer", transition:"all .2s" }}
-              onMouseEnter={e => { e.currentTarget.style.background = T.blue; e.currentTarget.style.color = "#fff"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = T.blue; }}
-            >
-              Acceso Rescatistas 🐾
-            </button>
           </div>
         </div>
       </nav>
@@ -491,7 +682,7 @@ export default function CatalogoPublico({ onLogin, onGoHome }) {
             Encuentra tu compañero ideal
           </h1>
           <p style={{ fontSize:"1rem", color:"rgba(255,255,255,.72)", maxWidth:480, margin:"0 auto 26px", lineHeight:1.6 }}>
-            Animales disponibles para adopción en México. Elige la mascota que más te guste y solicita su adopción directamente sin registrarte.
+            Mascotas disponibles para adopción. Elige a tu nuevo amigo y solicita su adopción directamente.
           </p>
 
           {/* Search bar */}
@@ -517,36 +708,39 @@ export default function CatalogoPublico({ onLogin, onGoHome }) {
 
       {/* ===== FILTERS & TABS ===== */}
       <div style={{ maxWidth:1280, margin:"0 auto", padding:"20px 5% 0" }}>
-        {/* Main Tab Mode Selector */}
-        <div style={{ display:"flex", gap:10, marginBottom:16 }}>
-          <button
-            onClick={() => setTabMode("en_adopcion")}
-            style={{
-              padding:"10px 22px", borderRadius:T.r.full,
-              border: `2px solid ${tabMode === "en_adopcion" ? T.blue : T.border}`,
-              background: tabMode === "en_adopcion" ? T.blue : T.surface,
-              color: tabMode === "en_adopcion" ? "#fff" : T.sub,
-              fontWeight: 700, fontSize:".88rem", cursor:"pointer",
-              boxShadow: tabMode === "en_adopcion" ? "0 4px 14px rgba(22,83,187,.25)" : "none",
-              transition: "all .15s",
-            }}
-          >
-            🐾 Mascotas en Adopción
-          </button>
-          <button
-            onClick={() => setTabMode("adoptados")}
-            style={{
-              padding:"10px 22px", borderRadius:T.r.full,
-              border: `2px solid ${tabMode === "adoptados" ? "#10B981" : T.border}`,
-              background: tabMode === "adoptados" ? "#10B981" : T.surface,
-              color: tabMode === "adoptados" ? "#fff" : T.sub,
-              fontWeight: 700, fontSize:".88rem", cursor:"pointer",
-              boxShadow: tabMode === "adoptados" ? "0 4px 14px rgba(16,185,129,.25)" : "none",
-              transition: "all .15s",
-            }}
-          >
-            ❤️ Casos de Éxito (Adoptados)
-          </button>
+        {/* Main Header & View Switcher */}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10, marginBottom:16 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <span style={{ fontSize:"1rem", fontWeight:800, color:T.ink }}>
+              🐾 Mascotas en Adopción
+            </span>
+          </div>
+
+          {/* View Switcher: Lista vs Grid */}
+          <div style={{ display:"flex", background:"#F3F4F6", padding:3, borderRadius:T.r.full, border:`1px solid ${T.border}` }}>
+            <button
+              onClick={() => setViewMode("list")}
+              style={{
+                padding:"6px 16px", borderRadius:T.r.full, border:"none",
+                background: viewMode === "list" ? T.blue : "transparent",
+                color: viewMode === "list" ? "#fff" : T.sub,
+                fontWeight: 700, fontSize:".8rem", cursor:"pointer"
+              }}
+            >
+              📋 Lista Inventario
+            </button>
+            <button
+              onClick={() => setViewMode("grid")}
+              style={{
+                padding:"6px 16px", borderRadius:T.r.full, border:"none",
+                background: viewMode === "grid" ? T.blue : "transparent",
+                color: viewMode === "grid" ? "#fff" : T.sub,
+                fontWeight: 700, fontSize:".8rem", cursor:"pointer"
+              }}
+            >
+              📱 Mosaico Cards
+            </button>
+          </div>
         </div>
 
         <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
@@ -601,24 +795,38 @@ export default function CatalogoPublico({ onLogin, onGoHome }) {
         </div>
       </div>
 
-      {/* ===== GRID ===== */}
+      {/* ===== CONTENT (LIST OR GRID) ===== */}
       <main style={{ maxWidth:1280, margin:"0 auto", padding:"22px 5% 80px" }}>
         {loading ? (
           <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:20 }}>
             {[1,2,3,4,5,6].map(i => <SkeletonCard key={i}/>)}
           </div>
         ) : filtered.length ? (
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:20 }}>
-            {filtered.map(a => (
-              <AnimalCard
-                key={a.id}
-                animal={a}
-                onOpen={setSelectedAnimal}
-                onCopy={copyLink}
-                copiedId={copiedId}
-              />
-            ))}
-          </div>
+          viewMode === "list" ? (
+            <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+              {filtered.map(a => (
+                <PrettyInventoryRow
+                  key={a.id}
+                  animal={a}
+                  onOpen={setSelectedAnimal}
+                  onCopy={copyLink}
+                  copiedId={copiedId}
+                />
+              ))}
+            </div>
+          ) : (
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:20 }}>
+              {filtered.map(a => (
+                <AnimalCard
+                  key={a.id}
+                  animal={a}
+                  onOpen={setSelectedAnimal}
+                  onCopy={copyLink}
+                  copiedId={copiedId}
+                />
+              ))}
+            </div>
+          )
         ) : (
           <div style={{ textAlign:"center", padding:"72px 20px", background:T.surface, borderRadius:T.r.xl, border:`1.5px dashed ${T.border}` }}>
             <div style={{ fontSize:"3rem", marginBottom:12 }}>🔍</div>

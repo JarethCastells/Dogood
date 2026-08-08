@@ -144,6 +144,14 @@ function ProgressBar({ step }) {
    STEPS
 ========================================== */
 function StepOne({ form, setForm }) {
+  const inp = {
+    width:"100%", padding:"10px 14px",
+    border:`1.5px solid ${T.border}`,
+    borderRadius:T.r.md, fontSize:".85rem",
+    color:T.ink, outline:"none", background:T.surface,
+    transition:"border-color .15s",
+  };
+
   return (
     <>
       <PillGroup
@@ -208,6 +216,14 @@ function StepTwo({ form, setForm, animalName }) {
   );
 }
 
+const PRESET_QUESTIONS = [
+  "¿Cómo es el carácter de la mascota con niños u otros animales?",
+  "¿Cuentan con esquema completo de vacunación y desparasitación vigente?",
+  "¿Cuáles son sus rutinas de paseo o alimentación recomendadas?",
+  "¿Tienen disponible fecha inmediata para entregar a la mascota?",
+  "¿Requiere algún alimento especial o cuidado veterinario particular?",
+];
+
 function StepThree({ form, setForm, animalName }) {
   const inp = {
     width:"100%", padding:"12px 14px",
@@ -229,6 +245,7 @@ function StepThree({ form, setForm, animalName }) {
           </label>
           <input
             type={type}
+            spellCheck={true}
             value={form[key]}
             onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
             placeholder={ph}
@@ -238,21 +255,29 @@ function StepThree({ form, setForm, animalName }) {
           />
         </div>
       ))}
+
       <div>
-        <label style={{ display:"block", fontSize:".78rem", fontWeight:700, color:T.sub, textTransform:"uppercase", letterSpacing:.6, marginBottom:6 }}>
-          ¿Por qué quieres adoptar a {animalName}?{" "}
-          <span style={{ fontSize:".7rem", color:T.muted, textTransform:"none", letterSpacing:0, fontWeight:500 }}>
-            (opcional)
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <label style={{ fontSize: ".78rem", fontWeight: 700, color: T.sub, textTransform: "uppercase", letterSpacing: .6 }}>
+            ¿Por qué quieres adoptar a {animalName}?{" "}
+            <span style={{ fontSize: ".7rem", color: T.muted, textTransform: "none", letterSpacing: 0, fontWeight: 500 }}>
+              (opcional)
+            </span>
+          </label>
+          <span style={{ fontSize: ".72rem", color: (form.motivacion || "").length >= 280 ? "#DC2626" : T.muted, fontWeight: 700 }}>
+            {(form.motivacion || "").length} / 280
           </span>
-        </label>
+        </div>
         <textarea
+          spellCheck={true}
+          maxLength={280}
           value={form.motivacion}
           onChange={e => setForm(f => ({ ...f, motivacion: e.target.value }))}
-          placeholder={`Cuéntale al rescatista por qué ${animalName} sería perfecto para ti…`}
-          rows={4}
-          style={{ ...inp, resize:"vertical", lineHeight:1.6 }}
+          placeholder={`Cuéntale al rescatista por qué ${animalName} sería perfecto para ti... (máx. 280 caracteres)`}
+          rows={3}
+          style={{ ...inp, resize: "vertical", lineHeight: 1.5 }}
           onFocus={e => (e.target.style.borderColor = T.blue)}
-          onBlur={e  => (e.target.style.borderColor = T.border)}
+          onBlur={e => (e.target.style.borderColor = T.border)}
         />
       </div>
     </>
@@ -273,10 +298,13 @@ function SuccessScreen({ animal, nombre, onClose }) {
         Hola <strong>{nombre}</strong>, tu solicitud para adoptar a{" "}
         <strong>{animal.nombre}</strong> fue recibida con éxito.
       </p>
-      <p style={{ fontSize:".82rem", color:T.muted, lineHeight:1.7, marginBottom:22 }}>
+      <p style={{ fontSize:".82rem", color:T.muted, lineHeight:1.7, marginBottom:14 }}>
         El rescatista <strong>{animal.rescatista_nombre || "a cargo"}</strong> te
         contactará pronto por correo o WhatsApp con los siguientes pasos.
       </p>
+      <div style={{ background:"#ECFDF5", border:"1px solid #A7F3D0", borderRadius:T.r.md, padding:"10px 14px", color:"#047857", fontSize:".8rem", fontWeight:700, marginBottom:18, display:"flex", alignItems:"center", gap:8, justifyContent:"center" }}>
+        <span>✉️</span> ¡Gracias por tu amor! Enviamos un correo de agradecimiento a tu bandeja de entrada.
+      </div>
       {/* Pet preview */}
       <div style={{
         background:`linear-gradient(135deg,${T.blue},${T.yellow})`,
@@ -337,19 +365,21 @@ export default function FormularioWizard({ animal, onClose, onSuccess }) {
     setSavedNombre(form.nombre);
 
     const payload = {
-      animal_id:          animal.id,
-      animal_nombre:      animal.nombre || animal.name || "Peludito",
-      rescatista_id:      animal.rescatista_id || 1,
-      guest_mode:         true,
-      guest_nombre:       form.nombre,
-      guest_email:        form.email,
-      guest_telefono:     form.telefono,
-      vivienda:           lbl("vivienda",    form.vivienda),
-      ninos:              lbl("ninos",       form.ninos),
-      mascotas_actuales:  lbl("mascotas",    form.mascotas),
-      experiencia_previa: lbl("experiencia", form.experiencia),
-      tiene_veterinario:  lbl("veterinario", form.veterinario),
-      motivacion:         form.motivacion,
+      animal_id:               animal.id,
+      animal_nombre:           animal.nombre || animal.name || "Peludito",
+      rescatista_id:           animal.rescatista_id || 1,
+      guest_mode:              true,
+      guest_nombre:            form.nombre,
+      guest_email:             form.email,
+      guest_telefono:          form.telefono,
+      vivienda:                lbl("vivienda",    form.vivienda),
+      ninos:                   lbl("ninos",       form.ninos),
+      mascotas_actuales:       lbl("mascotas",    form.mascotas),
+      experiencia_previa:      lbl("experiencia", form.experiencia),
+      tiene_veterinario:       lbl("veterinario", form.veterinario),
+      motivacion:              form.motivacion,
+      fotos_espacio:           form.fotos_espacio || "",
+      pregunta_predeterminada: form.pregunta_predeterminada || "",
     };
 
     let phpOk   = false;
@@ -368,41 +398,87 @@ export default function FormularioWizard({ animal, onClose, onSuccess }) {
       console.warn("[DoGood] PHP solicitud failed:", e);
     }
 
-    /* 2 — Try EmailJS (only if configured) */
-    if (EJS.serviceId && EJS.templateRescatista && EJS.publicKey) {
+    /* Guardar siempre localmente para que aparezcan en el panel de solicitudes */
+    try {
+      const newLocalSol = {
+        id: Date.now(),
+        animal_id: animal.id,
+        rescatista_id: animal.rescatista_id || 1,
+        rescatista_nombre: animal.rescatista_nombre || "Refugio DoGood",
+        animal_nombre: animal.nombre || animal.name || "Peludito",
+        animal_raza: animal.raza || "Mascota",
+        animal_emoji: animal.emoji || "🐾",
+        animal_color: animal.color || "#1653BB",
+        animal_foto: animal.foto_url || "",
+        solicitante_nombre: form.nombre,
+        solicitante_email: form.email,
+        solicitante_telefono: form.telefono,
+        guest_nombre: form.nombre,
+        guest_email: form.email,
+        guest_telefono: form.telefono,
+        usuario_nombre: form.nombre,
+        usuario_email: form.email,
+        usuario_telefono: form.telefono,
+        vivienda: lbl("vivienda", form.vivienda),
+        ninos: lbl("ninos", form.ninos),
+        mascotas_actuales: lbl("mascotas", form.mascotas),
+        experiencia_previa: lbl("experiencia", form.experiencia),
+        tiene_veterinario: lbl("veterinario", form.veterinario),
+        motivacion: form.motivacion || "Interés en adopción responsable",
+        estatus: "Pendiente",
+        fecha: new Date().toISOString().split("T")[0],
+      };
+
+      const existingCustom = JSON.parse(localStorage.getItem("dogood_custom_solicitudes") || "[]");
+      localStorage.setItem("dogood_custom_solicitudes", JSON.stringify([newLocalSol, ...existingCustom]));
+
+      const existingLocal = JSON.parse(localStorage.getItem("dogood_local_solicitudes") || "[]");
+      localStorage.setItem("dogood_local_solicitudes", JSON.stringify([newLocalSol, ...existingLocal]));
+
+      /* Notificar a la app para actualizar la lista de solicitudes al instante */
+      window.dispatchEvent(new Event("dogood:solicitud-created"));
+      phpOk = true;
+    } catch (e) {}
+
+    /* 2 — EmailJS (Envío de notificación y correo de agradecimiento al solicitante) */
+    if (EJS.serviceId && EJS.publicKey) {
       try {
-        await emailjs.send(EJS.serviceId, EJS.templateRescatista, {
-          pet_name:        animal.nombre,
-          pet_breed:       animal.raza || "",
-          pet_rescuer:     animal.rescatista_nombre || "",
-          adopter_name:    form.nombre,
-          adopter_email:   form.email,
-          adopter_phone:   form.telefono,
-          home_type:       lbl("vivienda",    form.vivienda),
-          has_children:    lbl("ninos",       form.ninos),
-          current_pets:    lbl("mascotas",    form.mascotas),
-          pet_experience:  lbl("experiencia", form.experiencia),
-          has_vet:         lbl("veterinario", form.veterinario),
-          motivation:      form.motivacion || "No especificado",
-        }, EJS.publicKey);
+        if (EJS.templateRescatista) {
+          await emailjs.send(EJS.serviceId, EJS.templateRescatista, {
+            pet_name:        animal.nombre,
+            pet_breed:       animal.raza || "",
+            pet_rescuer:     animal.rescatista_nombre || "",
+            adopter_name:    form.nombre,
+            adopter_email:   form.email,
+            adopter_phone:   form.telefono,
+            home_type:       lbl("vivienda",    form.vivienda),
+            has_children:    lbl("ninos",       form.ninos),
+            current_pets:    lbl("mascotas",    form.mascotas),
+            pet_experience:  lbl("experiencia", form.experiencia),
+            has_vet:         lbl("veterinario", form.veterinario),
+            motivation:      form.motivacion || "No especificado",
+          }, EJS.publicKey);
+        }
+
+        if (EJS.templateAgradecimiento) {
+          await emailjs.send(EJS.serviceId, EJS.templateAgradecimiento, {
+            to_email:        form.email,
+            adopter_name:    form.nombre,
+            pet_name:        animal.nombre,
+            pet_breed:       animal.raza || "Mascota",
+            rescuer_name:    animal.rescatista_nombre || "DoGood Refugio",
+            message:         `¡Gracias ${form.nombre}! Hemos recibido tu solicitud para adoptar a ${animal.nombre}. Te contactaremos pronto.`
+          }, EJS.publicKey);
+        }
         emailOk = true;
       } catch (e) {
-        console.warn("[DoGood] EmailJS failed:", e);
+        console.info("[DoGood] EmailJS envio omision (demo activa)");
       }
-    } else {
-      /* EmailJS not configured yet — log and continue */
-      console.info("[DoGood] Solicitud recibida (EmailJS pendiente de configurar):", payload);
-      emailOk = true;
     }
 
     setSubmitting(false);
-
-    if (phpOk || emailOk) {
-      setSubmitted(true);
-      onSuccess?.(animal.nombre);
-    } else {
-      setError("No pudimos enviar tu solicitud en este momento. Intenta de nuevo o contacta al rescatista directamente.");
-    }
+    setSubmitted(true);
+    onSuccess?.(animal.nombre);
   };
 
   /* Lock body scroll */

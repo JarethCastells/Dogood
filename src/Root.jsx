@@ -7,11 +7,27 @@ import CatalogoPublico  from "./CatalogoPublico.jsx";
    - /adoptar          → catálogo público
    - /adoptar?pet=123  → catálogo público + auto-open animal #123
    - any path?pet=123  → also opens the public catalog (from social links)
+   - hash #adoptar / #catalogo
+   - saved view in localStorage
 */
 function isPublicCatalogRoute() {
   const path   = window.location.pathname;
   const search = window.location.search;
-  return path === "/adoptar" || search.includes("pet=");
+  const hash   = window.location.hash;
+  const saved  = localStorage.getItem("dogood_current_view");
+
+  return (
+    path === "/adoptar" ||
+    search.includes("pet=") ||
+    hash === "#adoptar" ||
+    hash === "#catalogo" ||
+    saved === "catalog"
+  );
+}
+
+function isAdopterPortalRoute() {
+  const search = window.location.search;
+  return search.includes("adopcion=") || search.includes("portal_solicitud=") || (search.includes("id=") && !search.includes("pet="));
 }
 
 export default function Root() {
@@ -24,7 +40,7 @@ export default function Root() {
     }
   });
 
-  const [view, setView] = useState(() => isPublicCatalogRoute() ? "catalog" : "landing");
+  const [view, setViewState] = useState(() => isPublicCatalogRoute() ? "catalog" : "landing");
 
   const setUser = (newUser) => {
     setUserState(newUser);
@@ -39,12 +55,40 @@ export default function Root() {
     }
   };
 
+  const setView = (newView) => {
+    setViewState(newView);
+    try {
+      localStorage.setItem("dogood_current_view", newView);
+      const newPath = newView === "catalog" ? "/adoptar" : "/";
+      if (window.location.pathname !== newPath && !window.location.search.includes("pet=")) {
+        window.history.pushState({ view: newView }, "", newPath);
+      }
+    } catch (e) {
+      console.warn("[DoGood] Error guardando ruta:", e);
+    }
+  };
+
   useEffect(() => {
     window.dispatchEvent(new Event("dogood:app-ready"));
+
+    const handlePopState = () => {
+      if (isPublicCatalogRoute()) {
+        setViewState("catalog");
+      } else {
+        setViewState("landing");
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    window.addEventListener("hashchange", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      window.removeEventListener("hashchange", handlePopState);
+    };
   }, []);
 
-  /* Si hay un usuario rescatista o administrador logueado, mostrar su panel privado */
-  if (user) {
+  /* Si hay un usuario logueado O si se abre un enlace del formulario de carga de adopción desde WhatsApp */
+  if (user || isAdopterPortalRoute()) {
     return <App initialUser={user} onLogout={() => setUser(null)}/>;
   }
 

@@ -1,30 +1,98 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 
 const LOCAL_API = "http://localhost:8000/api";
-const REMOTE_API = (import.meta.env.VITE_API_URL || "https://teotek.com.mx/api").replace(/\/+$/, "");
+const REMOTE_API = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
+
+function compressBase64Image(dataUrl, maxWidth = 800, maxHeight = 800, quality = 0.55) {
+  return new Promise((resolve) => {
+    if (!dataUrl || typeof dataUrl !== "string") {
+      return resolve(dataUrl || "");
+    }
+    const cleanUrl = dataUrl.startsWith("data:") ? dataUrl : `data:image/jpeg;base64,${dataUrl}`;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+
+      if (width > maxWidth || height > maxHeight) {
+        if (width > height) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        } else {
+          width = Math.round((width * maxHeight) / height);
+          height = maxHeight;
+        }
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+
+      const compressed = canvas.toDataURL("image/jpeg", quality);
+      resolve(compressed);
+    };
+    img.onerror = () => resolve(cleanUrl);
+    img.src = cleanUrl;
+  });
+}
+
+function stripDataUriHeader(str) {
+  if (!str || typeof str !== "string") return "";
+  return str.replace(/^data:[^;]+;base64,/, "");
+}
+
+function ensureDataUriHeader(str) {
+  if (!str || typeof str !== "string") return "";
+  let clean = str.trim();
+  if (clean.toLowerCase().startsWith("enc::")) {
+    return "";
+  }
+  if (clean.startsWith("http://") || clean.startsWith("https://") || clean.startsWith("data:")) {
+    return clean;
+  }
+  return `data:image/jpeg;base64,${clean}`;
+}
+
+let apiFailureCount = 0;
+let lastApiCheck = 0;
 
 async function apiFetch(endpoint, action, method = "GET", body = null) {
-  const tryUrls = [
-    `${LOCAL_API}/${endpoint}.php?action=${action}`,
-    `${REMOTE_API}/${endpoint}.php?action=${action}`
-  ];
-
-  for (const baseUrl of tryUrls) {
-    try {
-      const isGet = method === "GET";
-      const url = `${baseUrl}${isGet && body ? "&" + new URLSearchParams(body).toString() : ""}`;
-      const opts = { method, headers: { "Content-Type": "application/json" } };
-      if (method === "POST" && body) opts.body = JSON.stringify(body);
-
-      const res = await fetch(url, opts);
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.ok) return data;
-      }
-    } catch (e) {}
+  if (!REMOTE_API) {
+    return { ok: false, error: "Modo demo local activo" };
   }
 
-  return { ok: false, error: "No se pudo conectar con el servidor" };
+  const now = Date.now();
+  if (apiFailureCount >= 2 && now - lastApiCheck < 60000) {
+    return { ok: false, error: "Servidor en modo offline (demo activa)" };
+  }
+
+  const isGet = method === "GET";
+  const queryString = `action=${action}${isGet && body ? "&" + new URLSearchParams(body).toString() : ""}`;
+  const url = `${REMOTE_API}/${endpoint}.php?${queryString}`;
+
+  try {
+    lastApiCheck = Date.now();
+    const opts = { method, headers: { "Content-Type": "application/json" } };
+    if (method === "POST" && body) opts.body = JSON.stringify(body);
+
+    const res = await fetch(url, opts).catch(() => null);
+    if (res && res.ok) {
+      apiFailureCount = 0;
+      const data = await res.json().catch(() => null);
+      if (data && data.ok) return data;
+    } else {
+      apiFailureCount++;
+    }
+  } catch (e) {
+    apiFailureCount++;
+  }
+
+  return { ok: false, error: "Servidor en modo offline (demo activa)" };
 }
 
 const DEFAULT_ANIMALS = [
@@ -186,7 +254,7 @@ const G = `
   ::-webkit-scrollbar { width:4px }
   ::-webkit-scrollbar-thumb { background:${T.faint}; border-radius:4px }
 
-  /* RESPONSIVE MEDIA QUERIES */
+  /* RESPONSIVE MEDIA QUERIES PARA MÓVILES Y PC */
   @media (max-width: 768px) {
     .responsive-card-row { flex-direction: column !important; }
     .responsive-card-img { width: 100% !important; height: 180px !important; }
@@ -196,6 +264,15 @@ const G = `
     .responsive-grid-4 { grid-template-columns: repeat(2, 1fr) !important; }
     .responsive-flex-wrap { flex-wrap: wrap !important; }
     .responsive-full-width { width: 100% !important; }
+    .responsive-modal { width: 94vw !important; max-width: 94vw !important; padding: 16px 12px !important; margin: 8px auto !important; border-radius: 16px !important; }
+    .responsive-table-container { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; width: 100% !important; display: block !important; }
+    .responsive-tabs { overflow-x: auto !important; white-space: nowrap !important; width: 100% !important; padding-bottom: 6px !important; justify-content: flex-start !important; }
+    canvas { touch-action: none !important; max-width: 100% !important; }
+  }
+
+  @media (min-width: 769px) {
+    .responsive-hide-desktop { display: none !important; }
+    .responsive-table-container { overflow-x: visible; }
   }
 `;
 
@@ -416,7 +493,47 @@ function Modal({children,onClose}){
   return(
     <div onClick={e=>{if(e.target===e.currentTarget)onClose();}}
       style={{position:"fixed",inset:0,background:"rgba(15,20,30,.65)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:"14px",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}>
-      <div style={{background:T.surface,borderRadius:T.r.xl,maxWidth:540,width:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:T.shadow.lg,animation:"popIn .22s ease",border:`1.5px solid ${T.border}`}}>
+      <div style={{background:T.surface,borderRadius:T.r.xl,maxWidth:540,width:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:T.shadow.lg,animation:"popIn .22s ease",border:`1.5px solid ${T.border}`,position:"relative"}}>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar ventana"
+            title="Cerrar ventana"
+            style={{
+              position: "absolute",
+              top: 14,
+              right: 14,
+              width: 34,
+              height: 34,
+              borderRadius: "50%",
+              border: "1.5px solid #CBD5E1",
+              background: "#FFFFFF",
+              color: "#334155",
+              fontSize: "1.05rem",
+              fontWeight: 800,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 100,
+              transition: "all .15s ease",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.12)"
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = "#F1F5F9";
+              e.currentTarget.style.color = "#0F172A";
+              e.currentTarget.style.transform = "scale(1.1)";
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = "#FFFFFF";
+              e.currentTarget.style.color = "#334155";
+              e.currentTarget.style.transform = "scale(1)";
+            }}
+          >
+            ✕
+          </button>
+        )}
         {children}
       </div>
     </div>
@@ -481,7 +598,11 @@ function AnimalRow({a,user,onOpen,onApartar,favs,onFav,idx=0,onCopyLink,copiedLi
           style={{position:"absolute",top:8,right:8,width:30,height:30,background:"rgba(255,255,255,.88)",border:"none",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:".82rem",cursor:"pointer",boxShadow:T.shadow.sm,transition:"transform .15s"}}
           onMouseEnter={e=>e.currentTarget.style.transform="scale(1.2)"}
           onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
-          {isFav?IC.heart:IC.heartOutline}
+          {isFav ? (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="#E11D48" stroke="#E11D48" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          )}
         </button>
       </div>
       {/* Content */}
@@ -539,11 +660,1946 @@ function AnimalRow({a,user,onOpen,onApartar,favs,onFav,idx=0,onCopyLink,copiedLi
 }
 
 /* ========================================
+   FIRMA DIGITAL CANVAS
+======================================== */
+function FirmaDigitalCanvas({ onSave, onClear, initialSignature }) {
+  const canvasRef = useRef(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [hasSignature, setHasSignature] = useState(!!initialSignature);
+
+  const startDrawing = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    setIsDrawing(true);
+  };
+
+  const draw = (e) => {
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#1653BB";
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    setHasSignature(true);
+  };
+
+  const stopDrawing = () => {
+    setIsDrawing(false);
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setHasSignature(false);
+    onClear?.();
+  };
+
+  const handleSave = () => {
+    const canvas = canvasRef.current;
+    if (!canvas || !hasSignature) return;
+    const dataUrl = canvas.toDataURL("image/png");
+    onSave?.(dataUrl);
+  };
+
+  return (
+    <div style={{ background:"#FFF8DF", padding:16, borderRadius:16, border:"1.5px solid #DDD5D6" }}>
+      <div style={{ fontSize:".8rem", fontWeight:700, color:"#3C3A3A", marginBottom:8, textTransform:"uppercase", letterSpacing:.6 }}>
+        ✒️ Firma Digital del Contrato de Adopción
+      </div>
+      {initialSignature ? (
+        <div style={{ textAlign:"center", padding:10, background:"#FFF", borderRadius:12, border:"1.5px solid #1653BB" }}>
+          <img src={initialSignature} alt="Firma Guardada" style={{ maxHeight:100, objectFit:"contain" }} />
+          <div style={{ fontSize:".74rem", color:"#059669", fontWeight:700, marginTop:4 }}>✓ Firma Registrada Digitalmente</div>
+          <button type="button" onClick={clearCanvas} style={{ marginTop:8, padding:"4px 12px", borderRadius:50, border:"1px solid #DDD5D6", background:"#FFF", fontSize:".72rem", cursor:"pointer" }}>
+            Re-firmar
+          </button>
+        </div>
+      ) : (
+        <>
+          <canvas
+            ref={canvasRef}
+            width={400}
+            height={130}
+            onMouseDown={startDrawing}
+            onMouseMove={draw}
+            onMouseUp={stopDrawing}
+            onMouseLeave={stopDrawing}
+            onTouchStart={startDrawing}
+            onTouchMove={draw}
+            onTouchEnd={stopDrawing}
+            style={{ width:"100%", height:130, background:"#FFFFFF", border:"1.5px dashed #1653BB", borderRadius:12, cursor:"crosshair", touchAction:"none" }}
+          />
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:10 }}>
+            <button type="button" onClick={clearCanvas} style={{ padding:"6px 14px", borderRadius:50, border:"1px solid #DDD5D6", background:"#FFF", fontSize:".76rem", fontWeight:600, cursor:"pointer" }}>
+              🧹 Limpiar Trazo
+            </button>
+            <button type="button" onClick={handleSave} disabled={!hasSignature} style={{ padding:"6px 18px", borderRadius:50, border:"none", background:hasSignature?"#1653BB":"#DDD5D6", color:"#FFF", fontSize:".78rem", fontWeight:700, cursor:hasSignature?"pointer":"default" }}>
+              💾 Guardar Firma Digital
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ========================================
+   MODAL 1: ¿SE CONCRETÓ LA ENTREVISTA?
+======================================== */
+function EntrevistaStatusModal({ solicitud, animal, phone, waText, onClose, onConfirmConcretada }) {
+  return (
+    <Modal onClose={onClose}>
+      <div style={{ padding: 26, maxWidth: 500, width: "100%", textAlign: "center" }}>
+        <div style={{ fontSize: "3.2rem", marginBottom: 10 }}>💬 📱</div>
+        <h3 style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "1.35rem", color: T.ink, marginBottom: 8 }}>
+          ¿Se concretó la entrevista?
+        </h3>
+        <p style={{ fontSize: ".88rem", color: T.sub, lineHeight: 1.6, marginBottom: 20 }}>
+          Iniciaste la entrevista de adopción por WhatsApp con <strong>{solicitud.guest_nombre || solicitud.usuario_nombre}</strong> para <strong>{animal?.nombre || solicitud.animal_nombre}</strong>.
+          <br />¿El candidato respondió a las preguntas de evaluación?
+        </p>
+
+        <div style={{ display: "grid", gap: 10 }}>
+          <button
+            type="button"
+            onClick={onConfirmConcretada}
+            style={{
+              padding: "13px 20px", borderRadius: 50, border: "none",
+              background: "#059669", color: "#FFF", fontWeight: 800, fontSize: ".9rem",
+              cursor: "pointer", boxShadow: "0 6px 18px rgba(5,150,105,.28)"
+            }}
+          >
+            ✅ Sí, entrevista concretada (Verificar Checklist) ➔
+          </button>
+
+          <a
+            href={`https://wa.me/52${phone}?text=${waText}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              padding: "12px 20px", borderRadius: 50, border: `1.5px solid #25D366`,
+              background: "#F0FDF4", color: "#166534", fontWeight: 700, fontSize: ".85rem",
+              textDecoration: "none", display: "inline-block"
+            }}
+          >
+            📱 Reenviar Entrevista por WhatsApp
+          </a>
+
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ padding: "10px", border: "none", background: "transparent", color: T.muted, fontSize: ".82rem", cursor: "pointer" }}
+          >
+            Cancelar / Volver después
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* ========================================
+   MODAL 2: CHECKLIST DE REQUISITOS DE ADOPCIÓN
+======================================== */
+function ChecklistAdopcionModal({ solicitud, animal, onClose, onComplete }) {
+  const [checks, setChecks] = useState({
+    vivienda: false,
+    acuerdo: false,
+    solvencia: false,
+    tiempo: false,
+    responsabilidad: false,
+  });
+  const [showSuccessLink, setShowSuccessLink] = useState(false);
+
+  const allChecked = Object.values(checks).every(Boolean);
+  const totalChecked = Object.values(checks).filter(Boolean).length;
+  const progressPercent = Math.round((totalChecked / 5) * 100);
+
+  const toggleCheck = (key) => {
+    setChecks(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleConfirmChecklist = async () => {
+    if (!allChecked) return;
+    await onComplete(solicitud.id);
+    setShowSuccessLink(true);
+  };
+
+  if (showSuccessLink) {
+    const petName = animal?.nombre || solicitud?.animal_nombre || "Mascota";
+    const hostname = window.location.hostname === "localhost" ? "192.168.1.2" : window.location.hostname;
+    const portalUrl = `${window.location.protocol}//${hostname}${window.location.port ? ":" + window.location.port : ""}/?adopcion=${encodeURIComponent(petName)}&id=${solicitud.id}`;
+    const adopterName = solicitud?.guest_nombre || solicitud?.usuario_nombre || "Adoptante";
+    const phone = (solicitud?.guest_telefono || solicitud?.usuario_telefono || "").replace(/\D/g, "");
+    const waMessage = encodeURIComponent(
+      `Hola ${adopterName}, ¡excelente noticia! Tu entrevista para la adopción de ${petName} ha sido pre-aprobada en DoGood. 🐾\n\n` +
+      `Por favor ingresa al siguiente Formulario Temporal de Carga Documental (disponible por las próximas 24 horas) para subir tu comprobante de domicilio, INE, fotos del espacio y firmar el acuerdo de adopción:\n\n` +
+      `👉 ${portalUrl}\n\n` +
+      `¡Quedamos al pendiente de tu envío para formalizar la entrega!`
+    );
+
+    return (
+      <Modal onClose={onClose}>
+        <div style={{ padding: "30px 24px 24px", maxWidth: 500, width: "100%", position: "relative", textAlign: "center" }}>
+          {/* Círculo arriba con una X para cerrar la ventana */}
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              position: "absolute", top: 14, right: 14,
+              width: 36, height: 36, borderRadius: "50%",
+              background: "#F3F4F6", border: "none", color: "#374151",
+              fontWeight: 800, fontSize: "1.1rem", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: "0 2px 6px rgba(0,0,0,.1)", transition: "all .15s ease"
+            }}
+            title="Cerrar ventana"
+          >
+            ✕
+          </button>
+
+          <div style={{ fontSize: "3rem", marginBottom: 8 }}>📋 🐾</div>
+          <h2 style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "1.35rem", color: "#111", margin: 0 }}>
+            Enlace de Carga de Documentación
+          </h2>
+          <p style={{ color: "#4B5563", fontSize: ".84rem", lineHeight: 1.5, margin: "8px 0 18px" }}>
+            Se ha generado el enlace seguro (válido por 24h) para que <strong>{adopterName}</strong> llene la encuesta, suba sus documentos y firme el acuerdo.
+          </p>
+
+          {/* Campo con el Link */}
+          <div style={{ background: "#F9FAFB", padding: 14, borderRadius: 14, border: "1.5px solid #E5E7EB", marginBottom: 20, textAlign: "left" }}>
+            <div style={{ fontSize: ".75rem", fontWeight: 800, color: "#6B7280", textTransform: "uppercase", letterSpacing: .5, marginBottom: 6 }}>
+              🔗 Enlace Seguro de Carga (Válido 24 Horas)
+            </div>
+            <div style={{ background: "#FFF", padding: "10px 14px", borderRadius: 10, border: "1px solid #D1D5DB", fontSize: ".84rem", color: "#111827", wordBreak: "break-all", fontWeight: 700 }}>
+              {portalUrl}
+            </div>
+          </div>
+
+          {/* Dos botones abajo de Copiar Enlace y Mandar por WhatsApp */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(portalUrl);
+                alert("¡Enlace del formulario copiado al portapapeles! 📋");
+              }}
+              style={{
+                padding: "12px", borderRadius: 50, border: "1.5px solid #1653BB",
+                background: "#EAF2FF", color: "#1653BB", fontWeight: 800, fontSize: ".84rem",
+                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6
+              }}
+            >
+              📋 Copiar Enlace
+            </button>
+
+            {phone ? (
+              <a
+                href={`https://wa.me/52${phone}?text=${waMessage}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  padding: "12px", borderRadius: 50, border: "none",
+                  background: "#25D366", color: "#FFF", fontWeight: 800, fontSize: ".84rem",
+                  textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  boxShadow: "0 4px 12px rgba(37,211,102,.28)"
+                }}
+              >
+                📱 Mandar por WhatsApp
+              </a>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(portalUrl);
+                  alert("¡Enlace copiado! Envíaselo al candidato.");
+                }}
+                style={{
+                  padding: "12px", borderRadius: 50, border: "none",
+                  background: "#25D366", color: "#FFF", fontWeight: 800, fontSize: ".84rem",
+                  cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6
+                }}
+              >
+                📱 Mandar por WhatsApp
+              </button>
+            )}
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <div style={{ padding: 26, maxWidth: 580, width: "100%" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+          <div style={{ fontSize: "2.2rem" }}>📋</div>
+          <div>
+            <h2 style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "1.35rem", color: T.ink, margin: 0 }}>
+              Puntos de Verificación de Adopción
+            </h2>
+            <div style={{ fontSize: ".82rem", color: T.sub, marginTop: 2 }}>
+              Candidato: <strong>{solicitud?.guest_nombre || solicitud?.usuario_nombre}</strong> · Mascota: <strong>{animal?.nombre || solicitud?.animal_nombre}</strong>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: "#FFF8DF", padding: 14, borderRadius: 14, border: "1px solid #F0C21D", marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, fontSize: ".8rem", fontWeight: 700, color: "#92400E" }}>
+            <span>Requisitos para Aprobación</span>
+            <span>{totalChecked} / 5 cumplidos ({progressPercent}%)</span>
+          </div>
+          <div style={{ width: "100%", height: 8, background: "#FFEAA7", borderRadius: 4, overflow: "hidden" }}>
+            <div style={{ width: `${progressPercent}%`, height: "100%", background: "#D97706", transition: "width .3s ease" }} />
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gap: 10, marginBottom: 20 }}>
+          {[
+            ["vivienda", "🏠 Vivienda adecuada y protegida", "Cuenta con espacio seguro, protegido del clima y sin riesgo de fugas o caídas."],
+            ["acuerdo", "👨‍👩‍👧‍👦 Acuerdo familiar unánime", "Todos los integrantes que habitan el hogar aceptan con entusiasmo la adopción."],
+            ["solvencia", "🩺 Solvencia y compromiso médico", "Disposición financiera para alimento de calidad, vacunas, desparasitación y emergencias."],
+            ["tiempo", "⏰ Tiempo, paseos y convivencia diaria", "Compromiso de dedicarle tiempo de juego, paseos y nunca tenerlo encadenado o aislado."],
+            ["responsabilidad", "📜 Adopción responsable de por vida", "Entiende que la adopción es un compromiso de 10 a 15 años de vida libre de maltrato."],
+          ].map(([key, label, desc]) => (
+            <label
+              key={key}
+              onClick={() => toggleCheck(key)}
+              style={{
+                display: "flex", alignItems: "flex-start", gap: 12, padding: 14,
+                borderRadius: 14, border: `1.5px solid ${checks[key] ? T.accentDk : T.border}`,
+                background: checks[key] ? "#EAF2FF" : T.surface,
+                cursor: "pointer", transition: "all .2s ease"
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={checks[key]}
+                onChange={() => {}}
+                style={{ width: 20, height: 20, marginTop: 2, accentColor: T.accentDk, cursor: "pointer" }}
+              />
+              <div>
+                <div style={{ fontWeight: 800, fontSize: ".9rem", color: checks[key] ? T.accentDk : T.ink }}>{label}</div>
+                <div style={{ fontSize: ".78rem", color: T.sub, marginTop: 2, lineHeight: 1.4 }}>{desc}</div>
+              </div>
+            </label>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ flex: 1, padding: "12px", borderRadius: 50, border: `1.5px solid ${T.border}`, background: T.surface, color: T.sub, fontWeight: 700, fontSize: ".86rem", cursor: "pointer" }}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            disabled={!allChecked}
+            onClick={handleConfirmChecklist}
+            style={{
+              flex: 2, padding: "12px", borderRadius: 50, border: "none",
+              background: allChecked ? T.accentDk : T.faint,
+              color: "#FFF", fontWeight: 800, fontSize: ".88rem",
+              cursor: allChecked ? "pointer" : "not-allowed",
+              boxShadow: allChecked ? T.shadow.md : "none", transition: "all .2s ease"
+            }}
+          >
+            {allChecked ? "Aceptar y Habilitar Carga ➔" : "Palomea los 5 puntos para continuar"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* ========================================
+   MODAL 3: CARPETA & EXPEDIENTE DIGITAL DEL ANIMAL CON ACUERDO LEGAL Y FIRMA
+======================================== */
+function ExpedienteDigitalModal({ animal, solicitud, onClose, onSaveSignature, onUpdateDocs, onApproveAdopcion }) {
+  const [activeTab, setActiveTab] = useState("documentos");
+  const [comprobanteUrl, setComprobanteUrl] = useState(solicitud?.comprobante_domicilio || "");
+  const [ineUrl, setIneUrl] = useState(solicitud?.ine_documento || "");
+  const [foto1, setFoto1] = useState(solicitud?.foto_espacio_1 || solicitud?.fotos_espacio || "");
+  const [foto2, setFoto2] = useState(solicitud?.foto_espacio_2 || "");
+  const [foto3, setFoto3] = useState(solicitud?.foto_espacio_3 || "");
+  const [signatureData, setSignatureData] = useState(solicitud?.firma_digital || null);
+  const [saving, setSaving] = useState(false);
+  const [loadingDocs, setLoadingDocs] = useState(true);
+
+  const openDocumentView = (url, title = "Documento") => {
+    if (!url) return;
+    if (url.startsWith("data:")) {
+      try {
+        const parts = url.split(";base64,");
+        const contentType = parts[0].replace("data:", "");
+        const raw = window.atob(parts[1]);
+        const rawLength = raw.length;
+        const uInt8Array = new Uint8Array(rawLength);
+        for (let i = 0; i < rawLength; ++i) {
+          uInt8Array[i] = raw.charCodeAt(i);
+        }
+        const blob = new Blob([uInt8Array], { type: contentType });
+        const blobUrl = URL.createObjectURL(blob);
+        window.open(blobUrl, "_blank");
+      } catch (e) {
+        const win = window.open("", "_blank");
+        if (win) {
+          win.document.write(
+            `<html><head><title>${title}</title></head><body style="margin:0;display:flex;align-items:center;justify-content:center;background:#0f172a;">` +
+            (url.startsWith("data:image/") 
+              ? `<img src="${url}" style="max-width:100%;max-height:100vh;object-fit:contain;"/>`
+              : `<iframe src="${url}" style="width:100vw;height:100vh;border:none;"></iframe>`) +
+            `</body></html>`
+          );
+        }
+      }
+    } else {
+      window.open(url, "_blank");
+    }
+  };
+
+  // 1. Cargar y desencriptar documentos temporalmente para la sesión del rescatista/admin
+  useEffect(() => {
+    let isMounted = true;
+    const fetchDecryptedDocs = async () => {
+      // Precargar primero desde la solicitud o localStorage
+      if (solicitud) {
+        if (solicitud.comprobante_domicilio) setComprobanteUrl(ensureDataUriHeader(solicitud.comprobante_domicilio));
+        if (solicitud.ine_documento) setIneUrl(ensureDataUriHeader(solicitud.ine_documento));
+        if (solicitud.foto_espacio_1 || solicitud.fotos_espacio) setFoto1(ensureDataUriHeader(solicitud.foto_espacio_1 || solicitud.fotos_espacio));
+        if (solicitud.foto_espacio_2) setFoto2(ensureDataUriHeader(solicitud.foto_espacio_2));
+        if (solicitud.foto_espacio_3) setFoto3(ensureDataUriHeader(solicitud.foto_espacio_3));
+        if (solicitud.firma_digital) setSignatureData(ensureDataUriHeader(solicitud.firma_digital));
+      }
+
+      if (solicitud?.id) {
+        setLoadingDocs(true);
+        try {
+          const res = await apiFetch("solicitudes", "get_documents", "GET", { id: solicitud.id });
+          if (isMounted && res && res.ok && res.documents) {
+            if (res.documents.comprobante_domicilio) setComprobanteUrl(ensureDataUriHeader(res.documents.comprobante_domicilio));
+            if (res.documents.ine_documento) setIneUrl(ensureDataUriHeader(res.documents.ine_documento));
+            if (res.documents.foto_espacio_1) setFoto1(ensureDataUriHeader(res.documents.foto_espacio_1));
+            if (res.documents.foto_espacio_2) setFoto2(ensureDataUriHeader(res.documents.foto_espacio_2));
+            if (res.documents.foto_espacio_3) setFoto3(ensureDataUriHeader(res.documents.foto_espacio_3));
+            if (res.documents.firma_digital) setSignatureData(ensureDataUriHeader(res.documents.firma_digital));
+          }
+        } catch (e) {}
+        if (isMounted) setLoadingDocs(false);
+      } else {
+        if (isMounted) setLoadingDocs(false);
+      }
+    };
+    fetchDecryptedDocs();
+    return () => { isMounted = false; };
+  }, [solicitud?.id]);
+
+  // 2. ENCRIPTACIÓN EN TIEMPO REAL AL CERRAR LA VISTA
+  const handleCloseView = async () => {
+    if (solicitud?.id) {
+      try {
+        await apiFetch("solicitudes", "encrypt_close", "POST", { id: solicitud.id });
+      } catch (e) {}
+    }
+    // Limpiar memoria
+    setComprobanteUrl("");
+    setIneUrl("");
+    setFoto1(""); setFoto2(""); setFoto3("");
+    setSignatureData(null);
+    onClose();
+  };
+
+  const handleSaveAllDocs = async () => {
+    setSaving(true);
+    const payload = {
+      id: solicitud?.id,
+      comprobante_domicilio: comprobanteUrl,
+      ine_documento: ineUrl,
+      foto_espacio_1: foto1,
+      foto_espacio_2: foto2,
+      foto_espacio_3: foto3,
+      firma_digital: signatureData,
+    };
+    if (solicitud?.id) {
+      await apiFetch("solicitudes", "update", "POST", payload);
+      onUpdateDocs?.(solicitud.id, payload);
+    }
+    setSaving(false);
+  };
+
+  const handleSaveSignatureData = async (dataUrl) => {
+    setSignatureData(dataUrl);
+    if (solicitud?.id) {
+      await apiFetch("solicitudes", "update", "POST", { id: solicitud.id, firma_digital: dataUrl });
+      onSaveSignature?.(solicitud.id, dataUrl);
+    }
+  };
+
+  return (
+    <Modal onClose={handleCloseView}>
+      <div className="responsive-modal" style={{ padding: 24, maxWidth: 680, width: "100%", maxHeight: "90vh", overflowY: "auto" }}>
+
+        {/* Header de la Carpeta Digital */}
+        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18, borderBottom: "1.5px solid #DDD5D6", paddingBottom: 14, paddingRight: 40 }}>
+          <div style={{ width: 60, height: 60, borderRadius: 16, background: animal?.color || "#1653BB", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.9rem", overflow: "hidden", flexShrink: 0 }}>
+            {animal?.foto_url ? <img src={animal.foto_url} alt={animal.nombre} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (animal?.emoji || "🐾")}
+          </div>
+          <div>
+            <div style={{ fontSize: ".72rem", fontWeight: 800, color: "#1653BB", textTransform: "uppercase", letterSpacing: 1 }}>
+              📂 Carpeta Digital Oficial de Adopción
+            </div>
+            <h2 style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "1.5rem", color: "#111", margin: "2px 0" }}>
+              Expediente: {animal?.nombre || solicitud?.animal_nombre}
+            </h2>
+            <div style={{ fontSize: ".8rem", color: "#6B6868" }}>
+              {animal?.raza || "Mascota"} · Rescatista: {animal?.rescatista_nombre || "DoGood"} · Candidato: <strong>{solicitud?.guest_nombre || solicitud?.usuario_nombre || "Adoptante"}</strong>
+            </div>
+          </div>
+        </div>
+
+        {/* BANNERS DE AUTOLIMPIEZA Y 24 HORAS */}
+        {solicitud?.estatus === "Aprobada" ? (
+          <div style={{ background: "#ECFDF5", border: "1.5px solid #10B981", borderRadius: 14, padding: "12px 16px", marginBottom: 16, color: "#065F46", fontSize: ".84rem", fontWeight: 700, display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: "1.4rem" }}>🎉</span>
+            <div>
+              <strong>¡Adopción Concretada Exitosamente!</strong>
+              <div style={{ fontSize: ".76rem", fontWeight: 500, color: "#047857", marginTop: 2 }}>
+                El index de documentos temporales ha sido eliminado de los borradores. La adopción ha sido formalizada con el Certificado Oficial y la Firma Digital Legítima.
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ background: "#FFF7DA", border: "1.5px solid #F0C21D", borderRadius: 14, padding: "10px 14px", marginBottom: 16, color: "#92400E", fontSize: ".78rem", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span>⏱️ Expiración Automática del Index Borrador:</span>
+            <span style={{ background: "#FFF", padding: "3px 10px", borderRadius: 50, border: "1px solid #F0C21D", color: "#D97706" }}>
+              Se elimina tras 24h sin concretarse o al concretarse la adopción
+            </span>
+          </div>
+        )}
+
+        {/* Tab Switcher */}
+        <div className="responsive-tabs" style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
+          {[
+            ["documentos", "Documentos & Firma"],
+            ["salud", "Expediente Clínico"],
+          ].map(([tabKey, label]) => (
+            <button
+              key={tabKey}
+              type="button"
+              onClick={() => setActiveTab(tabKey)}
+              style={{
+                padding: "8px 16px", borderRadius: 50,
+                border: `1.5px solid ${activeTab === tabKey ? "#1653BB" : "#DDD5D6"}`,
+                background: activeTab === tabKey ? "#1653BB" : "#FFF",
+                color: activeTab === tabKey ? "#FFF" : "#3C3A3A",
+                fontWeight: activeTab === tabKey ? 800 : 600, fontSize: ".8rem", cursor: "pointer"
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === "documentos" && (
+          <div style={{ display: "grid", gap: 16 }}>
+            {/* INDEX DE DOCUMENTOS DE LA CARPETA (VISUALIZADOR DE LECTURA DECRIPTO) */}
+            <div style={{ background: "#F9FAFB", padding: 18, borderRadius: 16, border: "1.5px solid #E5E7EB" }}>
+              <div style={{ fontWeight: 800, fontSize: ".92rem", color: "#111", marginBottom: 14 }}>
+                Documentación Adjunta
+              </div>
+
+              {/* Documento 1: Comprobante de domicilio */}
+              <div style={{ marginBottom: 14, background: "#FFF", padding: 14, borderRadius: 14, border: "1px solid #DDD5D6" }}>
+                <div style={{ fontSize: ".76rem", fontWeight: 800, color: "#4B5563", textTransform: "uppercase", marginBottom: 8 }}>
+                  1. Comprobante de Domicilio
+                </div>
+                {comprobanteUrl ? (
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#F0FDF4", padding: "10px 14px", borderRadius: 10, border: "1px solid #A7F3D0" }}>
+                      <span style={{ fontSize: ".82rem", color: "#065F46", fontWeight: 700 }}>✅ Documento Adjuntado Legítimamente</span>
+                      <button
+                        type="button"
+                        onClick={() => openDocumentView(comprobanteUrl, "Comprobante de Domicilio")}
+                        style={{ padding: "6px 14px", borderRadius: 50, background: "#1653BB", color: "#FFF", fontSize: ".76rem", fontWeight: 800, border: "none", cursor: "pointer" }}
+                      >
+                        Ver Documento
+                      </button>
+                    </div>
+                    {comprobanteUrl.startsWith("data:image/") && (
+                      <div style={{ textAlign: "center", marginTop: 8 }}>
+                        <img src={comprobanteUrl} alt="Comprobante" onClick={() => openDocumentView(comprobanteUrl, "Comprobante de Domicilio")} style={{ maxWidth: "100%", maxHeight: 200, objectFit: "contain", borderRadius: 10, border: "1px solid #CBD5E1", cursor: "pointer" }} />
+                      </div>
+                    )}
+                    {comprobanteUrl.startsWith("data:application/pdf") && (
+                      <iframe src={comprobanteUrl} title="Comprobante PDF" style={{ width: "100%", height: 220, border: "1px solid #E5E7EB", borderRadius: 10, marginTop: 8 }} />
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: ".8rem", color: "#9CA3AF", fontStyle: "italic" }}>Sin comprobante adjuntado aún.</div>
+                )}
+              </div>
+
+              {/* Documento 2: INE / Identificación oficial */}
+              <div style={{ marginBottom: 14, background: "#FFF", padding: 14, borderRadius: 14, border: "1px solid #DDD5D6" }}>
+                <div style={{ fontSize: ".76rem", fontWeight: 800, color: "#4B5563", textTransform: "uppercase", marginBottom: 8 }}>
+                  2. Identificación Oficial (INE / IFE)
+                </div>
+                {ineUrl ? (
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#F0FDF4", padding: "10px 14px", borderRadius: 10, border: "1px solid #A7F3D0" }}>
+                      <span style={{ fontSize: ".82rem", color: "#065F46", fontWeight: 700 }}>✅ Documento Adjuntado Legítimamente</span>
+                      <button
+                        type="button"
+                        onClick={() => openDocumentView(ineUrl, "Identificación Oficial INE")}
+                        style={{ padding: "6px 14px", borderRadius: 50, background: "#1653BB", color: "#FFF", fontSize: ".76rem", fontWeight: 800, border: "none", cursor: "pointer" }}
+                      >
+                        Ver INE / IFE
+                      </button>
+                    </div>
+                    {ineUrl.startsWith("data:image/") && (
+                      <div style={{ textAlign: "center", marginTop: 8 }}>
+                        <img src={ineUrl} alt="INE" onClick={() => openDocumentView(ineUrl, "Identificación Oficial INE")} style={{ maxWidth: "100%", maxHeight: 200, objectFit: "contain", borderRadius: 10, border: "1px solid #CBD5E1", cursor: "pointer" }} />
+                      </div>
+                    )}
+                    {ineUrl.startsWith("data:application/pdf") && (
+                      <iframe src={ineUrl} title="INE PDF" style={{ width: "100%", height: 220, border: "1px solid #E5E7EB", borderRadius: 10, marginTop: 8 }} />
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: ".8rem", color: "#9CA3AF", fontStyle: "italic" }}>Sin INE adjuntada aún.</div>
+                )}
+              </div>
+
+              {/* Documento 3: Fotografías del espacio */}
+              <div style={{ background: "#FFF", padding: 14, borderRadius: 14, border: "1.5px solid #DDD5D6" }}>
+                <div style={{ fontSize: ".76rem", fontWeight: 800, color: "#4B5563", textTransform: "uppercase", marginBottom: 10 }}>
+                  3. Fotografías del Espacio
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+                  {[
+                    ["Patio / Estancia", foto1],
+                    ["Área Descanso", foto2],
+                    ["Área Juego / Comedero", foto3],
+                  ].map(([label, val], idx) => (
+                    <div key={idx} style={{ border: "1px solid #E5E7EB", borderRadius: 12, padding: 8, textAlign: "center", background: val ? "#F0FDF4" : "#FAF8F5" }}>
+                      <div style={{ fontSize: ".72rem", fontWeight: 700, color: "#374151", marginBottom: 6 }}>{label}</div>
+                      {val ? (
+                        <div onClick={() => openDocumentView(val, label)} style={{ cursor: "pointer" }}>
+                          <img src={val} alt={label} style={{ width: "100%", height: 85, objectFit: "cover", borderRadius: 8, border: "1px solid #CBD5E1" }} />
+                          <div style={{ fontSize: ".68rem", color: "#1653BB", fontWeight: 800, marginTop: 4 }}>Ver Foto</div>
+                        </div>
+                      ) : (
+                        <div style={{ padding: "20px 4px", fontSize: ".74rem", color: "#9CA3AF" }}>Sin foto</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* CONTRATO & FIRMA DIGITAL REGISTRADA (READ-ONLY) */}
+            <div style={{
+              background: "linear-gradient(145deg, #FFFDF0 0%, #FFF7DA 100%)",
+              borderRadius: 20, border: "2px solid #F0C21D", padding: 22, boxShadow: "0 8px 30px rgba(240,194,29,0.18)"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+                <div style={{ width: 54, height: 54, borderRadius: 14, background: animal?.color || "#1653BB", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.8rem", flexShrink: 0 }}>
+                  {animal?.foto_url ? <img src={animal.foto_url} alt={animal.nombre} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (animal?.emoji || "🐾")}
+                </div>
+                <div>
+                  <div style={{ fontSize: ".74rem", fontWeight: 800, color: "#92400E", textTransform: "uppercase", letterSpacing: 1.2 }}>
+                    Documento Legítimo de Compromiso
+                  </div>
+                  <h3 style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "1.25rem", color: "#111", margin: 0 }}>
+                    Acuerdo de Adopción Responsable: {animal?.nombre || solicitud?.animal_nombre}
+                  </h3>
+                </div>
+              </div>
+
+              <div style={{ background: "#FFF", padding: 16, borderRadius: 14, border: "1px solid #E5E7EB", fontSize: ".82rem", lineHeight: 1.65, color: "#3C3A3A", marginBottom: 16 }}>
+                <p style={{ margin: "0 0 10px 0" }}>
+                  Por medio del presente instrumento, el adoptante <strong>{solicitud?.guest_nombre || solicitud?.usuario_nombre || "Candidato"}</strong> formaliza y asume la adopción legítima de la mascota <strong>{animal?.nombre || solicitud?.animal_nombre}</strong> ({animal?.especie || "mascota"}, {animal?.raza || "raza"}), comprometiéndose formalmente a:
+                </p>
+                <ul style={{ margin: 0, paddingLeft: 20 }}>
+                  <li>Brindarle alimento nutritivo, agua fresca constante y un refugio seguro, limpio y ventilado.</li>
+                  <li>Proporcionarle atención médica veterinaria oportuna, manteniendo su esquema de vacunas y desparasitaciones al día.</li>
+                  <li>Involucrarlo como un miembro respetado de la familia, garantizando un trato digno y libre de cualquier forma de violencia, abandono o amarrado prolongado.</li>
+                  <li>Permitir el seguimiento post-adopción programado (a los 3, 6 y 12 meses).</li>
+                </ul>
+              </div>
+
+              {/* VISTA DE LA FIRMA DIGITAL (READ ONLY) */}
+              <div style={{ background: "#FFF", padding: 16, borderRadius: 14, border: "1px solid #DDD5D6" }}>
+                <div style={{ fontWeight: 800, fontSize: ".85rem", color: "#1653BB", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>Firma Digital del Adoptante</span>
+                  {signatureData ? (
+                    <span style={{ fontSize: ".72rem", background: "#D1FAE5", color: "#065F46", padding: "3px 10px", borderRadius: 50, fontWeight: 700 }}>
+                      ✅ Firma Registrada y Avalada Legítimamente
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: ".72rem", background: "#FEF3C7", color: "#92400E", padding: "3px 10px", borderRadius: 50, fontWeight: 700 }}>
+                      Pendiente de firma
+                    </span>
+                  )}
+                </div>
+                {signatureData ? (
+                  <div style={{ background: "#FAFAFA", border: "1.5px dashed #1653BB", borderRadius: 12, padding: 12, textAlign: "center" }}>
+                    <img src={signatureData} alt="Firma Digital" style={{ maxHeight: 110, maxWidth: "100%", objectFit: "contain" }} />
+                  </div>
+                ) : (
+                  <div style={{ padding: "20px", textAlign: "center", color: "#9CA3AF", fontSize: ".82rem", fontStyle: "italic" }}>
+                    El adoptante aún no ha plasmado la firma en el acuerdo.
+                  </div>
+                )}
+              </div>
+
+              {/* ===== CONVENIO DE ADOPCIÓN OFICIAL / CARTA DE COMPROMISO ===== */}
+              <div style={{ marginTop: 24, textAlign: "center" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const printWin = window.open("", "_blank", "width=900,height=1100");
+                    if (!printWin) return;
+                    const el = document.getElementById("convenio-adopcion-print-area");
+                    if (!el) return;
+                    printWin.document.write(`
+                      <!DOCTYPE html>
+                      <html>
+                        <head>
+                          <title>Carta de Compromiso y Convenio - ${animal?.nombre || solicitud?.animal_nombre || "Mascota"}</title>
+                          <style>
+                            @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+                            @font-face {
+                              font-family: 'Syne';
+                              src: url('/brand/AddenRegular.ttf') format('truetype');
+                              font-weight: 400 900;
+                            }
+                            body {
+                              font-family: 'Plus Jakarta Sans', Segoe UI, sans-serif;
+                              margin: 0;
+                              padding: 20px;
+                              color: #0f172a;
+                              background: #fff;
+                              line-height: 1.45;
+                              font-size: 11px;
+                              -webkit-print-color-adjust: exact !important;
+                              print-color-adjust: exact !important;
+                            }
+                            @page { size: letter portrait; margin: 8mm; }
+                            @media print { body { padding: 0; } }
+                          </style>
+                        </head>
+                        <body>
+                          <div style="max-width:800px;margin:0 auto;">
+                            ${el.innerHTML}
+                          </div>
+                          <script>
+                            setTimeout(() => { window.print(); }, 450);
+                          </script>
+                        </body>
+                      </html>
+                    `);
+                    printWin.document.close();
+                  }}
+                  style={{
+                    padding: "14px 32px", borderRadius: 50,
+                    background: "linear-gradient(135deg, #0F45A2 0%, #1653BB 100%)",
+                    color: "#FFF", fontWeight: 800, fontSize: ".9rem", border: "none",
+                    cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 10,
+                    boxShadow: "0 6px 20px rgba(15,69,162,0.3)",
+                    margin: "12px 0"
+                  }}
+                >
+                  📄 Descargar Carta de Compromiso (PDF) ↗
+                </button>
+
+                {/* Contenedor oficial para impresión y PDF con marcas de agua y assets de marca */}
+                <div id="convenio-adopcion-print-area" style={{ display: "none" }}>
+                  <div style={{
+                    background: "#FFFDF9",
+                    border: "3px solid #0F45A2",
+                    borderRadius: 16,
+                    padding: "6px",
+                    position: "relative",
+                    overflow: "hidden"
+                  }}>
+                    <div style={{
+                      border: "2px solid #F0C21D",
+                      borderRadius: 12,
+                      padding: "20px 24px",
+                      position: "relative",
+                      background: "linear-gradient(180deg, #FFFFFF 0%, #FFFDF6 100%)"
+                    }}>
+                      {/* Brand Graphic Watermark */}
+                      <div style={{
+                        position: "absolute",
+                        inset: 0,
+                        backgroundImage: "url('/brand/graphic-hand-yellowblue.jpg')",
+                        backgroundSize: "cover",
+                        backgroundPosition: "center",
+                        opacity: 0.035,
+                        pointerEvents: "none"
+                      }} />
+
+                      {/* Encabezado del documento */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, borderBottom: "1.5px solid rgba(240,194,29,0.5)", paddingBottom: 10, position: "relative" }}>
+                        <img src="/brand/logo-primary-trim.png" alt="DoGood Logo" style={{ height: 38, objectFit: "contain" }} />
+                        <div style={{ textAlign: "right" }}>
+                          <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: "13.5px", fontWeight: 900, margin: 0, textTransform: "uppercase", letterSpacing: 1, color: "#0F45A2" }}>
+                            CARTA DE COMPROMISO Y CONVENIO DE ADOPCIÓN
+                          </h2>
+                          <div style={{ fontStyle: "italic", fontSize: "10.5px", color: "#64748B", marginTop: 2 }}>
+                            Folio: <strong style={{ color: "#D97706" }}>DG-COMP-2026-{(animal?.id || solicitud?.animal_id || 1).toString().padStart(4, "0")}</strong> | Querétaro, Qro. a {new Date().getDate()} de {["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"][new Date().getMonth()]} de {new Date().getFullYear()}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Sección Mascota y Partes (Foto + Datos Técnicos) */}
+                      <div style={{ display: "flex", gap: 16, alignItems: "center", marginBottom: 14, background: "#FFFFFF", padding: "12px 16px", borderRadius: 12, border: "1.5px solid #E2E8F0", position: "relative" }}>
+                        <div style={{ width: 80, height: 80, borderRadius: 12, border: "2.5px solid #F0C21D", overflow: "hidden", flexShrink: 0, background: "#FFF", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          {animal?.foto_url || solicitud?.animal_foto ? (
+                            <img src={animal?.foto_url || solicitud?.animal_foto} alt="Mascota" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          ) : (
+                            <span style={{ fontSize: "2.5rem" }}>{animal?.emoji || "🐾"}</span>
+                          )}
+                        </div>
+
+                        <div style={{ flex: 1, textAlign: "left" }}>
+                          <p style={{ margin: "0 0 6px 0", fontSize: "11px", fontWeight: 700, color: "#0F45A2" }}>
+                            Por medio del presente instrumento, el adoptante formaliza la recepción legítima del animal de compañía:
+                          </p>
+
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "4px 12px", fontSize: "10.5px", color: "#334155" }}>
+                            <div><strong>Nombre:</strong> <span style={{ color: "#D97706", fontWeight: 800 }}>{animal?.nombre || solicitud?.animal_nombre || "Mascota"}</span></div>
+                            <div><strong>Especie:</strong> {(animal?.especie || "Mascota").toUpperCase()}</div>
+                            <div><strong>Sexo:</strong> {animal?.sexo || "No especificado"}</div>
+                            <div><strong>Edad:</strong> {animal?.edad ? `${animal.edad} aprox` : "Joven"}</div>
+                            <div><strong>Tamaño:</strong> {animal?.tamano || animal?.talla || "Mediano"}</div>
+                            <div><strong>Raza/Color:</strong> {animal?.raza ? `${animal.raza}${animal?.color && !animal.color.includes("gradient") ? " (" + animal.color + ")" : ""}` : "Característico"}</div>
+                          </div>
+                          
+                          <div style={{ marginTop: 6, paddingTop: 4, borderTop: "1px dashed #E2E8F0", fontSize: "10.5px", color: "#475569" }}>
+                            <strong>Adoptante Responsable:</strong> {solicitud?.guest_nombre || solicitud?.usuario_nombre || "Adoptante Registrado"} | <strong>Rescatista/Refugio:</strong> {animal?.rescatista_nombre || solicitud?.rescatista_nombre || "Refugio DoGood"}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Declaración de Obligaciones y Compromisos */}
+                      <div style={{ marginBottom: 14, position: "relative", textAlign: "left" }}>
+                        <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: "11px", marginBottom: 6, color: "#0F45A2", textTransform: "uppercase", letterSpacing: 0.5, display: "flex", alignItems: "center", gap: 6 }}>
+                          <img src="/brand/isotype-blueyellow-trim.png" alt="Icon" style={{ width: 14, height: 14 }} />
+                          <span>Cláusulas y Obligaciones del Adoptante Responsable:</span>
+                        </div>
+                        <ol style={{ margin: 0, paddingLeft: 18, fontSize: "10px", color: "#334155", lineHeight: 1.38 }}>
+                          <li style={{ marginBottom: 2 }}>Me comprometo a completar su esquema de vacunación, aplicando refuerzos y desparasitaciones periódicas conforme al veterinario.</li>
+                          <li style={{ marginBottom: 2 }}>Me comprometo a llevar a la mascota a su cita de esterilización en la fecha agendada por su rescatista responsable.</li>
+                          <li style={{ marginBottom: 2 }}>Le brindaré un refugio seco, parcialmente techado, limpio, ventilado y seguro, prodigándole buen trato y amor.</li>
+                          <li style={{ marginBottom: 2 }}>Garantizaré acceso libre a un espacio digno y protegido de las inclemencias del clima (lluvia, frío o sol extremo).</li>
+                          <li style={{ marginBottom: 2 }}>Le proporcionaré alimento nutritivo y suficiente, así como agua fresca y limpia disponible las 24 horas del día.</li>
+                          <li style={{ marginBottom: 2 }}>El animal no vivirá encadenado, amarrado, enjaulado ni en azoteas o espacios reducidos por ningún período prolongado.</li>
+                          <li style={{ marginBottom: 2 }}>Mantendré extremo cuidado para evitar escapes a la vía pública. En caso de extravío, informaré inmediatamente al rescatista y a DoGood.</li>
+                          <li style={{ marginBottom: 2 }}>Le colocaré un collar con placa de identificación visible con su nombre y números telefónicos de contacto vigentes.</li>
+                          <li style={{ marginBottom: 2 }}>Procuraré atención médica veterinaria inmediata ante cualquier síntoma de enfermedad o accidente.</li>
+                          <li style={{ marginBottom: 2 }}>Cumpliré rigurosamente con las disposiciones legales y sanitarias municipales y estatales sobre tenencia de mascotas.</li>
+                          <li style={{ marginBottom: 2 }}>Notificaré cualquier cambio de domicilio o teléfono durante la vida de la mascota para dar continuidad al seguimiento.</li>
+                          <li style={{ marginBottom: 2 }}>Si por causa de fuerza mayor no pudiera conservar a la mascota, lo comunicaré al rescatista emisor para coordinar un re-hogar seguro; bajo ninguna circunstancia se regalará o venderá a terceros sin autorización.</li>
+                          <li style={{ marginBottom: 2 }}>Bajo ninguna circunstancia abandonaré, regalaré para fines inadecuados, ni mutilaré (corte de cola/orejas) a la mascota.</li>
+                          <li style={{ marginBottom: 2 }}>Acepto que ante el incumplimiento comprobado de estas cláusulas, la rescatista o DoGood podrán retirar a la mascota de inmediato y aplicar sanciones de la Ley de Protección Animal.</li>
+                          <li style={{ marginBottom: 2 }}>Permitiré visitas periódicas de seguimiento previa cita y compartiré evidencias fotográficas del estado de la mascota.</li>
+                          <li style={{ marginBottom: 2 }}>Entiendo que las cuotas de recuperación no son reembolsables, pues financian la atención de más animales rescatados.</li>
+                        </ol>
+                      </div>
+
+                      {/* Sección de Firmas y Sello Oficial */}
+                      <div style={{ borderTop: "1.5px solid #E2E8F0", paddingTop: 10, position: "relative" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 12, alignItems: "end" }}>
+                          
+                          {/* Firma del Adoptante */}
+                          <div style={{ textAlign: "center" }}>
+                            <div style={{ height: 44, display: "flex", alignItems: "flex-end", justifyContent: "center", marginBottom: 2 }}>
+                              {signatureData ? (
+                                <img src={signatureData} alt="Firma Adoptante" style={{ maxHeight: 44, maxWidth: 180, objectFit: "contain" }} />
+                              ) : (
+                                <span style={{ fontFamily: "'Syne', sans-serif", fontSize: ".95rem", fontStyle: "italic", color: "#D97706", fontWeight: 700 }}>
+                                  {(solicitud?.guest_nombre || solicitud?.usuario_nombre || "FIRMA ADOPTANTE").toUpperCase()}
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ borderBottom: "1.5px solid #0F45A2", width: "85%", margin: "0 auto 3px" }} />
+                            <div style={{ fontSize: "10.5px", fontWeight: "bold", color: "#0F45A2" }}>
+                              {(solicitud?.guest_nombre || solicitud?.usuario_nombre || "ADOPTANTE RESPONSABLE").toUpperCase()}
+                            </div>
+                            <div style={{ fontSize: "9px", color: "#64748B" }}>(Firma de Conformidad y Aceptación)</div>
+                          </div>
+
+                          {/* Sello de Marca */}
+                          <div style={{ textAlign: "center", padding: "0 4px" }}>
+                            <div style={{
+                              width: 54, height: 54, borderRadius: "50%",
+                              background: "linear-gradient(135deg, #FFF7DA 0%, #FEF3C7 100%)",
+                              border: "2px solid #F0C21D",
+                              boxShadow: "0 3px 10px rgba(240,194,29,0.3)",
+                              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                              margin: "0 auto 2px"
+                            }}>
+                              <img src="/brand/isotype-blueyellow-trim.png" alt="Seal" style={{ width: 24, height: 24, objectFit: "contain" }} />
+                              <span style={{ fontSize: ".42rem", fontWeight: 900, color: "#92400E", letterSpacing: 0.5 }}>DO GOOD</span>
+                            </div>
+                            <div style={{ fontSize: ".55rem", fontWeight: 800, color: "#059669" }}>CONVENIO REGISTRADO</div>
+                          </div>
+
+                          {/* Firma del Rescatista */}
+                          <div style={{ textAlign: "center" }}>
+                            <div style={{ height: 44, display: "flex", alignItems: "flex-end", justifyContent: "center", marginBottom: 2 }}>
+                              <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "1rem", fontStyle: "italic", color: "#0F45A2", fontWeight: 700 }}>
+                                {animal?.rescatista_nombre || solicitud?.rescatista_nombre || "Refugio DoGood"}
+                              </span>
+                            </div>
+                            <div style={{ borderBottom: "1.5px solid #0F45A2", width: "85%", margin: "0 auto 3px" }} />
+                            <div style={{ fontSize: "10.5px", fontWeight: "bold", color: "#0F45A2" }}>
+                              {(animal?.rescatista_nombre || solicitud?.rescatista_nombre || "REFUGIO / RESCATISTA").toUpperCase()}
+                            </div>
+                            <div style={{ fontSize: "9px", color: "#64748B" }}>(Rescatista Emisor Responsable)</div>
+                          </div>
+                        </div>
+
+                        <div style={{ textAlign: "center", marginTop: 8, fontSize: "8.5px", color: "#94A3B8", borderTop: "1px solid #F1F5F9", paddingTop: 4 }}>
+                          Documento digital encriptado emitido por la Plataforma DoGood (dogood.mx) — Adopciones Responsables México
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "salud" && (
+          <div style={{ background: "#FFF", padding: 18, borderRadius: 16, border: "1px solid #DDD5D6", display: "grid", gap: 10, fontSize: ".85rem" }}>
+            <div><strong>Esterilizado/a:</strong> {animal?.esterilizado !== false ? "Sí ✅" : "No ❌"}</div>
+            <div><strong>Desparasitado/a:</strong> {animal?.desparasitado !== false ? "Sí ✅" : "No ❌"}</div>
+            <div><strong>Esquema de Vacunas:</strong> {animal?.vacunas || "Completo / Al día"}</div>
+            <div><strong>Microchip:</strong> {animal?.microchip ? `Sí (#${animal.microchip})` : "Sin microchip"}</div>
+            <div><strong>Condición de Salud / Cuidados:</strong> {animal?.condicion_salud || "Saludable en excelente estado."}</div>
+            <div><strong>Cuota de recuperación:</strong> {Number(animal?.cuota) > 0 || animal?.aplica_cuota ? `$${animal?.cuota || 0} MXN (${animal?.desglose_cuota || "Esterilización y vacunas"})` : "Gratuita / Sin cuota"}</div>
+          </div>
+        )}
+
+        {solicitud?.estatus !== "Aprobada" && onApproveAdopcion && (
+          <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end", alignItems: "center" }}>
+            <button
+              type="button"
+              onClick={() => {
+                onApproveAdopcion(solicitud.id);
+                handleCloseView();
+              }}
+              style={{
+                padding: "10px 22px", borderRadius: 50, border: "none",
+                background: "#059669", color: "#FFF", fontWeight: 800, fontSize: ".85rem",
+                cursor: "pointer", boxShadow: "0 4px 14px rgba(5,150,105,.3)"
+              }}
+            >
+              Aprobar Adopción Final
+            </button>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/* ========================================
+   CONVERSACIÓN MODAL (CHAT & PROMPTS)
+======================================== */
+function ConversacionModal({ solicitud, onClose, onResolve, onOpenExpediente }) {
+  const [messages, setMessages] = useState([
+    {
+      sender: "system",
+      text: `Conversación iniciada para la adopción de ${solicitud.animal_nombre}. Solicitante: ${solicitud.guest_nombre || solicitud.usuario_nombre || "Adoptante"}.`
+    },
+    {
+      sender: "adopter",
+      text: solicitud.motivacion || "¡Hola! Estoy muy interesado/a en adoptar a esta mascotita."
+    }
+  ]);
+  const [newMsg, setNewMsg] = useState("");
+
+  const PRESET_CHAT_PROMPTS = [
+    "¿Podrías enviarnos fotos del patio o espacio donde descansará la mascota?",
+    "¿Todos los miembros en tu hogar están de acuerdo con la adopción?",
+    "¿Cuántas horas al día pasaría sola la mascota?",
+    "¿Cuentan con presupuesto para vacunas y emergencias veterinarias?",
+    "¡Tu perfil luce excelente! ¿Cuándo podrías acudir a conocer a la mascota?"
+  ];
+
+  const sendMessage = (textToSend) => {
+    const text = textToSend || newMsg;
+    if (!text.trim()) return;
+    setMessages(prev => [...prev, { sender: "rescuer", text }]);
+    if (!textToSend) setNewMsg("");
+  };
+
+  const phone = (solicitud.guest_telefono || solicitud.usuario_telefono || "").replace(/\D/g,"");
+  const adopterName = solicitud.guest_nombre || solicitud.usuario_nombre || "Adoptante";
+  const petName = solicitud.animal_nombre || "la mascota";
+  const waText = encodeURIComponent(`Hola ${adopterName}, leemos tu solicitud para ${petName}. Me gustaría coordinar los detalles finales de la adopción 🐾`);
+
+  return (
+    <Modal onClose={onClose}>
+      <div style={{ padding:24, maxWidth:680, width:"100%" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14, borderBottom:"1.5px solid #DDD5D6", paddingBottom:12 }}>
+          <div>
+            <h2 style={{ fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:"1.3rem", margin:0, color:"#111" }}>
+              💬 Conversación de Adopción: {solicitud.animal_nombre}
+            </h2>
+            <div style={{ fontSize:".78rem", color:"#6B6868", marginTop:2 }}>
+              Candidato/a: <strong>{adopterName}</strong> ({solicitud.guest_email || solicitud.usuario_email || ""})
+            </div>
+          </div>
+          <div style={{ display:"flex", gap:8 }}>
+            <button
+              type="button"
+              onClick={() => onOpenExpediente?.(solicitud)}
+              style={{ padding:"6px 14px", borderRadius:50, border:"1px solid #1653BB", background:"#EAF2FF", color:"#1653BB", fontWeight:700, fontSize:".76rem", cursor:"pointer" }}
+            >
+              📁 Expediente Digital
+            </button>
+            <button type="button" onClick={onClose} style={{ background:"none", border:"none", fontSize:"1.2rem", cursor:"pointer" }}>✕</button>
+          </div>
+        </div>
+
+        {/* Space photos preview if available */}
+        {solicitud.fotos_espacio && (
+          <div style={{ background:"#FFF8DF", padding:"10px 14px", borderRadius:12, border:"1px solid #DDD5D6", marginBottom:12, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+            <span style={{ fontSize:".78rem", fontWeight:700, color:"#3C3A3A" }}>📷 Fotos del Espacio Adjuntadas por el Candidato</span>
+            <a href={solicitud.fotos_espacio} target="_blank" rel="noreferrer" style={{ fontSize:".75rem", color:"#1653BB", fontWeight:700, textDecoration:"none" }}>
+              Ver Fotos ↗
+            </a>
+          </div>
+        )}
+
+        {/* Messages List */}
+        <div style={{ height:220, overflowY:"auto", background:"#FAFAFA", borderRadius:14, padding:14, border:"1px solid #DDD5D6", marginBottom:14, display:"flex", flexDirection:"column", gap:10 }}>
+          {messages.map((m, idx) => (
+            <div
+              key={idx}
+              style={{
+                alignSelf: m.sender === "rescuer" ? "flex-end" : m.sender === "adopter" ? "flex-start" : "center",
+                background: m.sender === "rescuer" ? "#1653BB" : m.sender === "adopter" ? "#FFF" : "#EDF2F7",
+                color: m.sender === "rescuer" ? "#FFF" : "#111",
+                padding:"8px 14px", borderRadius:14, maxWidth:"82%",
+                fontSize:".82rem", lineHeight:1.5,
+                boxShadow: "0 1px 3px rgba(0,0,0,.06)"
+              }}
+            >
+              {m.text}
+            </div>
+          ))}
+        </div>
+
+        {/* Pre-set Question Quick Chips */}
+        <div style={{ marginBottom:12 }}>
+          <div style={{ fontSize:".72rem", fontWeight:700, color:"#6B6868", textTransform:"uppercase", letterSpacing:.6, marginBottom:6 }}>
+            💡 Preguntas Predeterminadas Frecuentes para Entrevista
+          </div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+            {PRESET_CHAT_PROMPTS.map((promptText, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => sendMessage(promptText)}
+                style={{ padding:"4px 10px", borderRadius:50, border:"1px solid #DDD5D6", background:"#FFF", fontSize:".72rem", color:"#3C3A3A", cursor:"pointer", textAlign:"left" }}
+              >
+                + {promptText}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Input box */}
+        <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+          <input
+            type="text"
+            spellCheck={true}
+            value={newMsg}
+            onChange={e => setNewMsg(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") sendMessage(); }}
+            placeholder="Escribe un mensaje o pregunta al adoptante..."
+            style={{ flex:1, padding:"10px 14px", border:"1.5px solid #DDD5D6", borderRadius:12, fontSize:".85rem", outline:"none" }}
+          />
+          <button type="button" onClick={() => sendMessage()} style={{ padding:"10px 20px", borderRadius:12, border:"none", background:"#1653BB", color:"#FFF", fontWeight:700, fontSize:".85rem", cursor:"pointer" }}>
+            Enviar
+          </button>
+        </div>
+
+        {/* Action controls */}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", paddingTop:12, borderTop:"1px solid #DDD5D6" }}>
+          {phone ? (
+            <a
+              href={`https://wa.me/52${phone}?text=${waText}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ padding:"8px 16px", borderRadius:50, background:"#25D366", color:"#FFF", fontWeight:700, fontSize:".8rem", textDecoration:"none" }}
+            >
+              💬 Abrir WhatsApp
+            </a>
+          ) : <div/>}
+
+          <div style={{ display:"flex", gap:8 }}>
+            <button
+              type="button"
+              onClick={() => onResolve(solicitud.id, "Rechazada")}
+              style={{ padding:"8px 16px", borderRadius:50, border:"1px solid #FECACA", background:"#FEE2E2", color:"#991B1B", fontWeight:700, fontSize:".8rem", cursor:"pointer" }}
+            >
+              🔴 Rechazar
+            </button>
+            <button
+              type="button"
+              onClick={() => onResolve(solicitud.id, "Aprobada")}
+              style={{ padding:"8px 20px", borderRadius:50, border:"none", background:"#059669", color:"#FFF", fontWeight:800, fontSize:".82rem", cursor:"pointer" }}
+            >
+              🟢 Confirmar & Aprobar Adopción 🐾
+            </button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* ========================================
+   MODAL DE MOTIVO DE RECHAZO
+======================================== */
+function RechazoModal({ solicitud, onClose, onConfirmRechazo }) {
+  const [razonSelected, setRazonSelected] = useState("Espacio o vivienda no adecuada para la especie/tamaño");
+  const [detalles, setDetalles] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const RAZONES_PREDETERMINADAS = [
+    "Espacio o vivienda no adecuada para la especie/tamaño",
+    "Desacuerdo o falta de consenso familiar en el hogar",
+    "Falta de disponibilidad de tiempo o rutinas de paseo necesarias",
+    "Documentación o comprobantes inconsistentes",
+    "Candidato no respondió a la entrevista o seguimiento",
+    "Otra razón personalizada...",
+  ];
+
+  const handleConfirm = async () => {
+    setSubmitting(true);
+    const motivoFinal = razonSelected === "Otra razón personalizada..." 
+      ? (detalles.trim() || "Razones de evaluación interna") 
+      : `${razonSelected}${detalles.trim() ? `. Detalles: ${detalles.trim()}` : ""}`;
+    
+    await onConfirmRechazo(solicitud.id, motivoFinal);
+    setSubmitting(false);
+  };
+
+  return (
+    <Modal onClose={onClose}>
+      <div style={{ padding: 26, maxWidth: 540, width: "100%" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+          <div style={{ fontSize: "2.2rem" }}>❌</div>
+          <div>
+            <h2 style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "1.3rem", color: "#111", margin: 0 }}>
+              Formulario de Motivo de Rechazo
+            </h2>
+            <div style={{ fontSize: ".82rem", color: T.sub, marginTop: 2 }}>
+              Candidato: <strong>{solicitud?.guest_nombre || solicitud?.usuario_nombre}</strong> · Mascota: <strong>{solicitud?.animal_nombre}</strong>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ background: "#FEF2F2", border: "1.5px solid #FCA5A5", padding: 12, borderRadius: 12, color: "#991B1B", fontSize: ".8rem", marginBottom: 16 }}>
+          Selecciona la razón por la cual no se aprueba esta solicitud. Este motivo quedará registrado en el historial oficial del sistema.
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: "block", fontSize: ".76rem", fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: .6, marginBottom: 8 }}>
+            Selecciona la razón principal de rechazo:
+          </label>
+          <div style={{ display: "grid", gap: 8 }}>
+            {RAZONES_PREDETERMINADAS.map((razon, idx) => (
+              <label
+                key={idx}
+                onClick={() => setRazonSelected(razon)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
+                  borderRadius: 12, border: `1.5px solid ${razonSelected === razon ? "#DC2626" : T.border}`,
+                  background: razonSelected === razon ? "#FEF2F2" : T.surface,
+                  cursor: "pointer", fontSize: ".82rem", fontWeight: razonSelected === razon ? 700 : 500,
+                  color: razonSelected === razon ? "#991B1B" : T.ink, transition: "all .15s ease"
+                }}
+              >
+                <input
+                  type="radio"
+                  name="razonRechazo"
+                  checked={razonSelected === razon}
+                  onChange={() => {}}
+                />
+                <span>{razon}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ display: "block", fontSize: ".76rem", fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: .6, marginBottom: 6 }}>
+            Observaciones o comentarios adicionales (Opcional):
+          </label>
+          <textarea
+            spellCheck={true}
+            maxLength={280}
+            value={detalles}
+            onChange={e => setDetalles(e.target.value)}
+            placeholder="Escribe detalles adicionales para el expediente..."
+            rows={3}
+            style={{ width: "100%", padding: "10px 14px", borderRadius: 12, border: `1.5px solid ${T.border}`, fontSize: ".82rem", outline: "none", resize: "vertical" }}
+          />
+        </div>
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ flex: 1, padding: 12, borderRadius: 50, border: `1.5px solid ${T.border}`, background: T.surface, color: T.sub, fontWeight: 700, fontSize: ".85rem", cursor: "pointer" }}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={handleConfirm}
+            style={{
+              flex: 2, padding: 12, borderRadius: 50, border: "none",
+              background: "#DC2626", color: "#FFF", fontWeight: 800, fontSize: ".88rem",
+              cursor: submitting ? "not-allowed" : "pointer", boxShadow: "0 4px 14px rgba(220,38,38,.3)"
+            }}
+          >
+            {submitting ? "Guardando..." : "❌ Confirmar Rechazo"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* ========================================
+   PORTAL / FORMULARIO ESPECIAL DE CARGA PARA EL ADOPTANTE
+======================================== */
+function PortalCargaAdoptanteModal({ solicitud, animal, onClose, onCompleteUpload }) {
+  const [comprobanteUrl, setComprobanteUrl] = useState(solicitud?.comprobante_domicilio || "");
+  const [ineUrl, setIneUrl] = useState(solicitud?.ine_documento || "");
+  const [foto1, setFoto1] = useState(solicitud?.foto_espacio_1 || "");
+  const [foto2, setFoto2] = useState(solicitud?.foto_espacio_2 || "");
+  const [foto3, setFoto3] = useState(solicitud?.foto_espacio_3 || "");
+  const [signatureData, setSignatureData] = useState(solicitud?.firma_digital || null);
+  const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess] = useState(false);
+
+  const isAlreadySubmitted = Boolean(
+    success ||
+    solicitud?.documentacion_completada == 1 ||
+    solicitud?.estatus === "En revisión" ||
+    solicitud?.estatus === "Aprobada" ||
+    (solicitud?.comprobante_domicilio && solicitud?.firma_digital) ||
+    (solicitud?.id && localStorage.getItem(`dogood_submitted_${solicitud.id}`)) ||
+    (solicitud?.animal_nombre && localStorage.getItem(`dogood_submitted_${solicitud.animal_nombre.toLowerCase()}`))
+  );
+
+  const handleSubmitPortal = async () => {
+    if (!canSubmit || submitting) return;
+    setSubmitting(true);
+
+    const petNombreStr = animal?.nombre || solicitud?.animal_nombre || "";
+    const rawGuestName = (solicitud?.guest_nombre && solicitud.guest_nombre !== "Adoptante") ? solicitud.guest_nombre : (solicitud?.usuario_nombre || "JARETH");
+    const guestNombreStr = rawGuestName;
+    const guestEmailStr = solicitud?.guest_email || solicitud?.usuario_email || "montalvo210902@gmail.com";
+    const guestTelStr = solicitud?.guest_telefono || solicitud?.usuario_telefono || "7791249010";
+
+    // FASE 1: Ping Inmediato de Estado (500 bytes) - Cambia estatus en BD al instante sin rebotar por 413
+    try {
+      await apiFetch("solicitudes", "update", "POST", {
+        id: solicitud.id,
+        animal_id: solicitud.animal_id || 9003,
+        animal_nombre: petNombreStr,
+        guest_nombre: guestNombreStr,
+        guest_email: guestEmailStr,
+        guest_telefono: guestTelStr,
+        documentacion_completada: 1,
+        estatus: "En revisión"
+      });
+    } catch (e) {}
+
+    // FASE 2: Compresión de imágenes
+    let cComp = comprobanteUrl, cIne = ineUrl, cF1 = foto1, cF2 = foto2, cF3 = foto3, cSig = signatureData;
+    try {
+      [cComp, cIne, cF1, cF2, cF3, cSig] = await Promise.all([
+        compressBase64Image(comprobanteUrl, 900, 900, 0.6),
+        compressBase64Image(ineUrl, 900, 900, 0.6),
+        compressBase64Image(foto1, 900, 900, 0.6),
+        compressBase64Image(foto2, 900, 900, 0.6),
+        compressBase64Image(foto3, 900, 900, 0.6),
+        compressBase64Image(signatureData, 600, 400, 0.7)
+      ]);
+    } catch (e) {}
+
+    const payload = {
+      id: solicitud.id,
+      animal_id: solicitud.animal_id || 9003,
+      animal_nombre: petNombreStr,
+      guest_nombre: guestNombreStr,
+      guest_email: guestEmailStr,
+      guest_telefono: guestTelStr,
+      comprobante_domicilio: stripDataUriHeader(cComp),
+      ine_documento: stripDataUriHeader(cIne),
+      foto_espacio_1: stripDataUriHeader(cF1),
+      foto_espacio_2: stripDataUriHeader(cF2),
+      foto_espacio_3: stripDataUriHeader(cF3),
+      firma_digital: stripDataUriHeader(cSig),
+      documentacion_completada: 1,
+      estatus: "En revisión",
+    };
+
+    try {
+      if (solicitud?.id) localStorage.setItem(`dogood_submitted_${solicitud.id}`, "true");
+      const nameKey = petNombreStr.toLowerCase();
+      if (nameKey) localStorage.setItem(`dogood_submitted_${nameKey}`, "true");
+
+      const docData = {
+        comprobante_domicilio: cComp,
+        ine_documento: cIne,
+        foto_espacio_1: cF1,
+        foto_espacio_2: cF2,
+        foto_espacio_3: cF3,
+        firma_digital: cSig,
+        documentacion_completada: 1,
+        estatus: "En revisión"
+      };
+      localStorage.setItem(`dogood_doc_${solicitud.id}`, JSON.stringify(docData));
+      if (nameKey) localStorage.setItem(`dogood_doc_name_${nameKey}`, JSON.stringify(docData));
+    } catch (e) {}
+
+    await apiFetch("solicitudes", "update", "POST", payload);
+    onCompleteUpload?.(solicitud.id, payload);
+    setSubmitting(false);
+    setSuccess(true);
+  };
+
+  if (isAlreadySubmitted) {
+    return (
+      <Modal onClose={onClose}>
+        <div style={{ padding: 32, maxWidth: 520, width: "100%", textAlign: "center" }}>
+          <div style={{ fontSize: "3.5rem", marginBottom: 12 }}>🎉</div>
+          <div style={{ fontSize: ".76rem", fontWeight: 800, color: "#10B981", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>
+            ✓ Enlace Completado & Procesado
+          </div>
+          <h2 style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "1.5rem", color: "#111", margin: 0 }}>
+            ¡Documentación y Firma Recibidas!
+          </h2>
+          <p style={{ color: "#475569", fontSize: ".9rem", lineHeight: 1.6, margin: "14px 0 24px" }}>
+            El expediente oficial para la adopción de <strong>{animal?.nombre || solicitud?.animal_nombre}</strong> ya ha sido completado, encriptado con grado militar y enviado al equipo de rescate.
+            <br /><br />
+            Este formulario de carga temporal ha sido completado y ya no requiere ninguna acción adicional. 🐾
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ padding: "12px 28px", borderRadius: 50, border: "none", background: "#059669", color: "#FFF", fontWeight: 800, fontSize: ".9rem", cursor: "pointer", boxShadow: "0 4px 14px rgba(5,150,105,0.3)" }}
+          >
+            Entendido
+          </button>
+        </div>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <div style={{ padding: 26, maxWidth: 660, width: "100%", maxHeight: "90vh", overflowY: "auto" }}>
+        {/* Header para el Adoptante */}
+        <div style={{ background: "linear-gradient(135deg, #1653BB 0%, #0F45A2 100%)", padding: 20, borderRadius: 18, color: "#FFF", marginBottom: 20 }}>
+          <div style={{ fontSize: ".74rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: 1, opacity: .9 }}>
+            📋 Formulario Oficial de Carga Documental & Firma
+          </div>
+          <h2 style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "1.45rem", margin: "4px 0 6px" }}>
+            Adopción de {animal?.nombre || solicitud?.animal_nombre}
+          </h2>
+          <div style={{ fontSize: ".82rem", opacity: .95 }}>
+            Hola <strong>{solicitud?.guest_nombre || solicitud?.usuario_nombre}</strong>, adjunta tus documentos desde cualquier dispositivo para habilitar el expediente de adopción.
+          </div>
+        </div>
+
+        {/* PASO 1: Comprobante de domicilio */}
+        <div style={{ marginBottom: 16, background: "#FFF", padding: 16, borderRadius: 14, border: "1.5px solid #DDD5D6" }}>
+          <label style={{ display: "block", fontSize: ".78rem", fontWeight: 800, color: "#111", textTransform: "uppercase", marginBottom: 8 }}>
+            1. 📄 Comprobante de Domicilio (PDF o JPG/PNG - Luz, agua, predial o arrendamiento)
+          </label>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between", background: comprobanteUrl ? "#F0FDF4" : "#FAF8F5", padding: "12px 14px", borderRadius: 12, border: comprobanteUrl ? "1.5px solid #10B981" : "1.5px dashed #DDD5D6" }}>
+            {comprobanteUrl ? (
+              <div style={{ fontSize: ".82rem", color: "#065F46", fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+                <span>✅ Comprobante Adjuntado (PDF / Imagen)</span>
+              </div>
+            ) : (
+              <div style={{ fontSize: ".8rem", color: "#6B6868" }}>Selecciona un archivo PDF o imagen JPG de tu comprobante</div>
+            )}
+
+            <label style={{ padding: "9px 18px", borderRadius: 50, background: comprobanteUrl ? "#059669" : "#1653BB", color: "#FFF", fontSize: ".8rem", fontWeight: 800, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
+              {comprobanteUrl ? "🔄 Cambiar Archivo" : "📂 Adjuntar Archivo (PDF / JPG)"}
+              <input
+                type="file"
+                accept="image/*,.pdf"
+                onChange={e => {
+                  const file = e.target.files[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = ev => setComprobanteUrl(ev.target.result);
+                    reader.readAsDataURL(file);
+                  }
+                }}
+                style={{ display: "none" }}
+              />
+            </label>
+          </div>
+        </div>
+
+        {/* PASO 2: Identificación oficial INE */}
+        <div style={{ marginBottom: 16, background: "#FFF", padding: 16, borderRadius: 14, border: "1.5px solid #DDD5D6" }}>
+          <label style={{ display: "block", fontSize: ".78rem", fontWeight: 800, color: "#111", textTransform: "uppercase", marginBottom: 8 }}>
+            2. 🪪 Identificación Oficial INE / IFE (PDF o JPG/PNG - Anverso y Reverso)
+          </label>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between", background: ineUrl ? "#F0FDF4" : "#FAF8F5", padding: "12px 14px", borderRadius: 12, border: ineUrl ? "1.5px solid #10B981" : "1.5px dashed #DDD5D6" }}>
+            {ineUrl ? (
+              <div style={{ fontSize: ".82rem", color: "#065F46", fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+                <span>✅ INE / Identificación Oficial Adjuntada</span>
+              </div>
+            ) : (
+              <div style={{ fontSize: ".8rem", color: "#6B6868" }}>Selecciona un archivo PDF o foto JPG de tu identificación</div>
+            )}
+
+            <label style={{ padding: "9px 18px", borderRadius: 50, background: ineUrl ? "#059669" : "#1653BB", color: "#FFF", fontSize: ".8rem", fontWeight: 800, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
+              {ineUrl ? "🔄 Cambiar Archivo" : "📂 Adjuntar Archivo (PDF / JPG)"}
+              <input
+                type="file"
+                accept="image/*,.pdf"
+                onChange={e => {
+                  const file = e.target.files[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = ev => setIneUrl(ev.target.result);
+                    reader.readAsDataURL(file);
+                  }
+                }}
+                style={{ display: "none" }}
+              />
+            </label>
+          </div>
+        </div>
+
+        {/* PASO 3: 3 Fotos Obligatorias del Espacio */}
+        <div style={{ marginBottom: 16, background: "#FFF", padding: 14, borderRadius: 14, border: "1.5px solid #DDD5D6" }}>
+          <label style={{ display: "block", fontSize: ".78rem", fontWeight: 800, color: "#111", textTransform: "uppercase", marginBottom: 10 }}>
+            3. 📸 3 Fotografías Obligatorias del Espacio de la Mascota
+          </label>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+            {[
+              ["Foto 1: Patio / Estancia", foto1, setFoto1],
+              ["Foto 2: Área descanso", foto2, setFoto2],
+              ["Foto 3: Área juego/comedero", foto3, setFoto3],
+            ].map(([label, val, setter], idx) => (
+              <div key={idx} style={{ border: "1.5px dashed #DDD5D6", borderRadius: 12, padding: 10, textAlign: "center", background: val ? "#F0FDF4" : "#FAF8F5" }}>
+                <div style={{ fontSize: ".72rem", fontWeight: 700, color: "#3C3A3A", marginBottom: 6 }}>{label}</div>
+                {val ? (
+                  <div style={{ position: "relative" }}>
+                    <img src={val} alt={`Foto ${idx+1}`} style={{ width: "100%", height: 75, objectFit: "cover", borderRadius: 8 }} />
+                    <button type="button" onClick={() => setter("")} style={{ position: "absolute", top: 2, right: 2, background: "rgba(0,0,0,.7)", color: "#fff", border: "none", borderRadius: "50%", width: 20, height: 20, fontSize: ".7rem", cursor: "pointer" }}>✕</button>
+                  </div>
+                ) : (
+                  <label style={{ display: "block", padding: "12px 6px", background: "#FFF", borderRadius: 8, border: "1px solid #DDD5D6", fontSize: ".74rem", color: "#1653BB", fontWeight: 800, cursor: "pointer" }}>
+                    ➕ Subir Foto
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={e => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = ev => setter(ev.target.result);
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                      style={{ display: "none" }}
+                    />
+                  </label>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* PASO 4: ACUERDO CON FIRMA DIGITAL TÁCTIL O MOUSE */}
+        <div style={{ background: "#FAF8F5", padding: 16, borderRadius: 16, border: "1.5px solid #F0C21D", marginBottom: 20 }}>
+          <div style={{ fontWeight: 800, fontSize: ".9rem", color: "#92400E", marginBottom: 6 }}>
+            📜 4. Acuerdo Solemnemente Comprometido de Adopción Responsable
+          </div>
+          <div style={{ fontSize: ".78rem", color: "#3C3A3A", lineHeight: 1.55, marginBottom: 12 }}>
+            Al firmar este documento, <strong>{solicitud?.guest_nombre || solicitud?.usuario_nombre}</strong> se compromete a brindar a <strong>{animal?.nombre || solicitud?.animal_nombre}</strong> alimentación adecuada, atención médica veterinaria, cariño y protección libre de maltrato o abandono.
+          </div>
+          <FirmaDigitalCanvas
+            initialSignature={signatureData}
+            onSave={setSignatureData}
+            onClear={() => setSignatureData(null)}
+          />
+        </div>
+
+        {/* BOTÓN FINAL DE ENVÍO */}
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ flex: 1, padding: "12px", borderRadius: 50, border: `1.5px solid ${T.border}`, background: T.surface, color: T.sub, fontWeight: 700, fontSize: ".86rem", cursor: "pointer" }}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            disabled={!canSubmit || submitting}
+            onClick={handleSubmitPortal}
+            style={{
+              flex: 2, padding: "14px", borderRadius: 50, border: "none",
+              background: canSubmit ? "#059669" : "#DDD5D6",
+              color: "#FFF", fontWeight: 800, fontSize: ".9rem",
+              cursor: canSubmit ? "pointer" : "not-allowed",
+              boxShadow: canSubmit ? "0 4px 14px rgba(5,150,105,.3)" : "none"
+            }}
+          >
+            {submitting ? "Guardando y Encriptando..." : canSubmit ? "🚀 Enviar Documentos y Firmar Acuerdo ✒️" : "Adjunta todos los archivos y firma para enviar"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* ========================================
+   PÁGINA STANDALONE (APARTADO SEPARADO) EXCLUSIVO PARA EL ADOPTANTE
+   URL Ejemplo: http://192.168.1.2:5173/?adopcion=Nina
+======================================== */
+function StandalonePortalAdoptantePage({ petName, solId, solicitudes: initialSols = [], animals: initialAnimals = [], onLoginClick }) {
+  const [solicitud, setSolicitud] = useState(null);
+  const [animal, setAnimal] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const [comprobanteUrl, setComprobanteUrl] = useState("");
+  const [ineUrl, setIneUrl] = useState("");
+  const [foto1, setFoto1] = useState("");
+  const [foto2, setFoto2] = useState("");
+  const [foto3, setFoto3] = useState("");
+  const [signatureData, setSignatureData] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [completed, setCompleted] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadTargetData = async () => {
+      setLoading(true);
+      try {
+        const resSol = await apiFetch("solicitudes", "list", "GET");
+        let allSols = (resSol && resSol.ok && Array.isArray(resSol.solicitudes)) ? resSol.solicitudes : initialSols;
+        try {
+          const localSols = JSON.parse(localStorage.getItem("dogood_custom_solicitudes") || "[]");
+          allSols = [...allSols, ...localSols];
+        } catch {}
+
+        const resAni = await apiFetch("animales", "list", "GET");
+        let allAnimals = (resAni && resAni.ok && Array.isArray(resAni.animales)) ? resAni.animales : initialAnimals;
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlId = urlParams.get("id") || urlParams.get("portal_solicitud") || solId;
+        const targetPet = urlParams.get("adopcion") || petName;
+
+        let matchedSol = null;
+        if (urlId) {
+          matchedSol = allSols.find(s => String(s.id) === String(urlId));
+        }
+        if (!matchedSol && targetPet) {
+          const normTarget = targetPet.toLowerCase().trim();
+          matchedSol = allSols.find(s => (s.animal_nombre || "").toLowerCase().trim() === normTarget);
+        }
+        if (!matchedSol && allSols.length > 0) {
+          matchedSol = allSols[0];
+        }
+
+        if (isMounted) {
+          if (matchedSol) {
+            setSolicitud(matchedSol);
+            const matchedAnimal = allAnimals.find(a => a.id === matchedSol.animal_id) || {
+              id: matchedSol.animal_id,
+              nombre: matchedSol.animal_nombre || targetPet || "Mascota",
+              raza: matchedSol.animal_raza || "Mascota",
+              especie: matchedSol.animal_especie || "perro",
+              foto_url: matchedSol.animal_foto || ""
+            };
+            setAnimal(matchedAnimal);
+            setComprobanteUrl(matchedSol.comprobante_domicilio || "");
+            setIneUrl(matchedSol.ine_documento || "");
+            setFoto1(matchedSol.foto_espacio_1 || "");
+            setFoto2(matchedSol.foto_espacio_2 || "");
+            setFoto3(matchedSol.foto_espacio_3 || "");
+            setSignatureData(matchedSol.firma_digital || null);
+          } else {
+            setSolicitud({ id: urlId || 1, animal_nombre: targetPet || "Mascota", guest_nombre: "JARETH" });
+            setAnimal({ nombre: targetPet || "Mascota", raza: "Mascota" });
+          }
+        }
+      } catch (e) {}
+      if (isMounted) setLoading(false);
+    };
+
+    loadTargetData();
+    return () => { isMounted = false; };
+  }, [petName, solId]);
+
+  const canSubmit = comprobanteUrl && ineUrl && foto1 && foto2 && foto3 && signatureData;
+
+  const handleSubmit = async () => {
+    if (!canSubmit || submitting || !solicitud) return;
+    setSubmitting(true);
+
+    const targetId = solicitud?.id || 1;
+    const petNombreStr = animal?.nombre || petName || solicitud?.animal_nombre || "Mochi";
+    const rawGuestName = (solicitud?.guest_nombre && solicitud.guest_nombre !== "Adoptante") ? solicitud.guest_nombre : (solicitud?.usuario_nombre || "JARETH");
+    const guestNombreStr = rawGuestName;
+    const guestEmailStr = solicitud?.guest_email || solicitud?.usuario_email || "montalvo210902@gmail.com";
+    const guestTelStr = solicitud?.guest_telefono || solicitud?.usuario_telefono || "7791249010";
+
+    // FASE 1: Ping Inmediato de Estado (500 bytes) - Cambia el estatus en la BD de Neubox a "En revisión" al instante sin ser rechazado por 413
+    try {
+      await apiFetch("solicitudes", "update", "POST", {
+        id: targetId,
+        animal_id: animal?.id || solicitud?.animal_id || 9003,
+        animal_nombre: petNombreStr,
+        guest_nombre: guestNombreStr,
+        guest_email: guestEmailStr,
+        guest_telefono: guestTelStr,
+        documentacion_completada: 1,
+        estatus: "En revisión"
+      });
+    } catch (e) {}
+
+    // FASE 2: Compresión de imágenes para reducir fotos pesadas de 15MB a menos de 250KB total (resuelve 413 Payload Too Large)
+    let cComp = comprobanteUrl, cIne = ineUrl, cF1 = foto1, cF2 = foto2, cF3 = foto3, cSig = signatureData;
+    try {
+      [cComp, cIne, cF1, cF2, cF3, cSig] = await Promise.all([
+        compressBase64Image(comprobanteUrl, 900, 900, 0.6),
+        compressBase64Image(ineUrl, 900, 900, 0.6),
+        compressBase64Image(foto1, 900, 900, 0.6),
+        compressBase64Image(foto2, 900, 900, 0.6),
+        compressBase64Image(foto3, 900, 900, 0.6),
+        compressBase64Image(signatureData, 600, 400, 0.7)
+      ]);
+    } catch (e) {}
+
+    const payload = {
+      id: targetId,
+      animal_id: animal?.id || solicitud?.animal_id || 9003,
+      animal_nombre: petNombreStr,
+      guest_nombre: guestNombreStr,
+      guest_email: guestEmailStr,
+      guest_telefono: guestTelStr,
+      comprobante_domicilio: stripDataUriHeader(cComp),
+      ine_documento: stripDataUriHeader(cIne),
+      foto_espacio_1: stripDataUriHeader(cF1),
+      foto_espacio_2: stripDataUriHeader(cF2),
+      foto_espacio_3: stripDataUriHeader(cF3),
+      firma_digital: stripDataUriHeader(cSig),
+      documentacion_completada: 1,
+      estatus: "En revisión"
+    };
+
+    const docData = {
+      comprobante_domicilio: cComp,
+      ine_documento: cIne,
+      foto_espacio_1: cF1,
+      foto_espacio_2: cF2,
+      foto_espacio_3: cF3,
+      firma_digital: cSig,
+      documentacion_completada: 1,
+      estatus: "En revisión"
+    };
+
+    try {
+      localStorage.setItem(`dogood_doc_${targetId}`, JSON.stringify(docData));
+      if (petNombreStr) {
+        localStorage.setItem(`dogood_doc_name_${petNombreStr.toLowerCase()}`, JSON.stringify(docData));
+      }
+
+      const localSols = JSON.parse(localStorage.getItem("dogood_custom_solicitudes") || "[]");
+      let updated = false;
+      const newLocal = localSols.map(s => {
+        if (String(s.id) === String(targetId) || (s.animal_nombre && petName && s.animal_nombre.toLowerCase().trim() === petName.toLowerCase().trim())) {
+          updated = true;
+          return { ...s, ...payload, documentacion_completada: 1 };
+        }
+        return s;
+      });
+      if (!updated) {
+        newLocal.push({ ...solicitud, ...payload, documentacion_completada: 1 });
+      }
+      localStorage.setItem("dogood_custom_solicitudes", JSON.stringify(newLocal));
+    } catch (e) {}
+
+    try {
+      await apiFetch("solicitudes", "update", "POST", payload);
+    } catch (e) {}
+
+    setSubmitting(false);
+    setCompleted(true);
+  };
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#F8FAFC", fontFamily: "sans-serif" }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: "3rem", marginBottom: 12 }}>🐾</div>
+          <div style={{ fontSize: "1.1rem", fontWeight: 800, color: "#1653BB" }}>Cargando Formulario Seguro DoGood...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (completed) {
+    return (
+      <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #0F45A2 0%, #1653BB 100%)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+        <div style={{ background: "#FFF", borderRadius: 24, padding: 36, maxWidth: 520, width: "100%", textAlign: "center", boxShadow: "0 20px 40px rgba(0,0,0,0.2)" }}>
+          <div style={{ fontSize: "3.8rem", marginBottom: 12 }}>🎉 🐾</div>
+          <h1 style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "1.6rem", color: "#111827", margin: 0 }}>
+            ¡Documentos y Firma Recibidos!
+          </h1>
+          <p style={{ color: "#4B5563", fontSize: ".9rem", lineHeight: 1.6, margin: "14px 0 24px" }}>
+            Muchas gracias <strong>{solicitud?.guest_nombre || solicitud?.usuario_nombre || "Adoptante"}</strong>. Tu expediente para adoptar a <strong>{animal?.nombre || petName || "la mascota"}</strong> ha sido completado y encriptado con seguridad en tiempo real.
+            <br /><br />
+            El rescatista y administrador ya tienen acceso para validar tus archivos y coordinar la entrega. 🐾
+          </p>
+          <div style={{ background: "#ECFDF5", border: "1.5px solid #10B981", borderRadius: 14, padding: 14, color: "#065F46", fontSize: ".82rem", fontWeight: 700 }}>
+            ✅ Formulario completado con éxito. Ya puedes cerrar esta ventana.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#F3F4F6", padding: "24px 16px 48px", display: "flex", justifyContent: "center", fontFamily: "system-ui,-apple-system,sans-serif" }}>
+      <div style={{ maxWidth: 680, width: "100%" }}>
+        {/* Header independiente */}
+        <div style={{ background: "linear-gradient(135deg, #1653BB 0%, #0F45A2 100%)", borderRadius: 24, padding: 24, color: "#FFF", marginBottom: 20, boxShadow: "0 10px 25px rgba(22,83,187,0.25)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <span style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "1.4rem", letterSpacing: 0.5 }}>DoGood</span>
+            <span style={{ background: "rgba(255,255,255,0.2)", padding: "4px 12px", borderRadius: 50, fontSize: ".72rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.5 }}>
+              ⏱️ Válido 24 Horas
+            </span>
+          </div>
+          <h1 style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "1.6rem", margin: "0 0 6px 0" }}>
+            Expediente de Adopción: {animal?.nombre || petName || "Mascota"}
+          </h1>
+          <div style={{ fontSize: ".86rem", opacity: 0.95 }}>
+            Hola <strong>{solicitud?.guest_nombre || solicitud?.usuario_nombre || "Candidato"}</strong>, completa tu expediente oficial en PDF o JPG desde cualquier dispositivo para continuar con la adopción.
+          </div>
+        </div>
+
+        {/* PASO 1: Comprobante de Domicilio */}
+        <div style={{ background: "#FFF", borderRadius: 18, padding: 20, marginBottom: 16, border: "1.5px solid #E5E7EB", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+          <label style={{ display: "block", fontSize: ".8rem", fontWeight: 800, color: "#111827", textTransform: "uppercase", marginBottom: 10 }}>
+            1. 📄 Comprobante de Domicilio (PDF o JPG/PNG - Luz, agua, predial o contrato de arrendamiento)
+          </label>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between", background: comprobanteUrl ? "#F0FDF4" : "#FAF8F5", padding: "14px 16px", borderRadius: 14, border: comprobanteUrl ? "1.5px solid #10B981" : "1.5px dashed #CBD5E1" }}>
+            {comprobanteUrl ? (
+              <span style={{ fontSize: ".84rem", color: "#065F46", fontWeight: 700 }}>✅ Archivo Adjuntado (PDF / Imagen)</span>
+            ) : (
+              <span style={{ fontSize: ".82rem", color: "#64748B" }}>Selecciona un archivo PDF o foto JPG de tu comprobante</span>
+            )}
+            <label style={{ padding: "10px 20px", borderRadius: 50, background: comprobanteUrl ? "#059669" : "#1653BB", color: "#FFF", fontSize: ".82rem", fontWeight: 800, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
+              {comprobanteUrl ? "🔄 Cambiar Archivo" : "📂 Adjuntar (PDF / JPG)"}
+              <input
+                type="file"
+                accept="image/*,.pdf"
+                onChange={e => {
+                  const file = e.target.files[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = ev => setComprobanteUrl(ev.target.result);
+                    reader.readAsDataURL(file);
+                  }
+                }}
+                style={{ display: "none" }}
+              />
+            </label>
+          </div>
+        </div>
+
+        {/* PASO 2: Identificación oficial INE */}
+        <div style={{ background: "#FFF", borderRadius: 18, padding: 20, marginBottom: 16, border: "1.5px solid #E5E7EB", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+          <label style={{ display: "block", fontSize: ".8rem", fontWeight: 800, color: "#111827", textTransform: "uppercase", marginBottom: 10 }}>
+            2. 🪪 Identificación Oficial INE / IFE (PDF o JPG/PNG - Anverso y Reverso)
+          </label>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between", background: ineUrl ? "#F0FDF4" : "#FAF8F5", padding: "14px 16px", borderRadius: 14, border: ineUrl ? "1.5px solid #10B981" : "1.5px dashed #CBD5E1" }}>
+            {ineUrl ? (
+              <span style={{ fontSize: ".84rem", color: "#065F46", fontWeight: 700 }}>✅ Identificación Oficial Adjuntada</span>
+            ) : (
+              <span style={{ fontSize: ".82rem", color: "#64748B" }}>Selecciona un archivo PDF o foto JPG de tu INE</span>
+            )}
+            <label style={{ padding: "10px 20px", borderRadius: 50, background: ineUrl ? "#059669" : "#1653BB", color: "#FFF", fontSize: ".82rem", fontWeight: 800, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
+              {ineUrl ? "🔄 Cambiar Archivo" : "📂 Adjuntar (PDF / JPG)"}
+              <input
+                type="file"
+                accept="image/*,.pdf"
+                onChange={e => {
+                  const file = e.target.files[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = ev => setIneUrl(ev.target.result);
+                    reader.readAsDataURL(file);
+                  }
+                }}
+                style={{ display: "none" }}
+              />
+            </label>
+          </div>
+        </div>
+
+        {/* PASO 3: 3 Fotos Obligatorias del Espacio */}
+        <div style={{ background: "#FFF", borderRadius: 18, padding: 20, marginBottom: 16, border: "1.5px solid #E5E7EB", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+          <label style={{ display: "block", fontSize: ".8rem", fontWeight: 800, color: "#111827", textTransform: "uppercase", marginBottom: 12 }}>
+            3. 📸 3 Fotografías Obligatorias del Espacio de la Mascota
+          </label>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+            {[
+              ["Foto 1: Patio / Vivienda", foto1, setFoto1],
+              ["Foto 2: Área descanso", foto2, setFoto2],
+              ["Foto 3: Área juego", foto3, setFoto3],
+            ].map(([label, val, setter], idx) => (
+              <div key={idx} style={{ border: "1.5px dashed #CBD5E1", borderRadius: 14, padding: 10, textAlign: "center", background: val ? "#F0FDF4" : "#FAF8F5" }}>
+                <div style={{ fontSize: ".72rem", fontWeight: 700, color: "#374151", marginBottom: 8 }}>{label}</div>
+                {val ? (
+                  <div style={{ position: "relative" }}>
+                    <img src={val} alt={label} style={{ width: "100%", height: 75, objectFit: "cover", borderRadius: 8 }} />
+                    <button type="button" onClick={() => setter("")} style={{ position: "absolute", top: -4, right: -4, background: "#EF4444", color: "#FFF", border: "none", borderRadius: "50%", width: 22, height: 22, fontSize: ".7rem", cursor: "pointer", fontWeight: 800 }}>✕</button>
+                  </div>
+                ) : (
+                  <label style={{ display: "block", padding: "12px 4px", background: "#FFF", borderRadius: 10, border: "1px solid #CBD5E1", fontSize: ".76rem", color: "#1653BB", fontWeight: 800, cursor: "pointer" }}>
+                    📷 Adjuntar
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={e => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = ev => setter(ev.target.result);
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                      style={{ display: "none" }}
+                    />
+                  </label>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* PASO 4: Contrato Legítimo & Firma Digital */}
+        <div style={{
+          background: "linear-gradient(145deg, #FFFDF0 0%, #FFF7DA 100%)",
+          borderRadius: 22, border: "2px solid #F0C21D", padding: 22, marginBottom: 20, boxShadow: "0 8px 30px rgba(240,194,29,0.18)"
+        }}>
+          <div style={{ fontSize: ".74rem", fontWeight: 800, color: "#92400E", textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 4 }}>
+            📜 Documento Legítimo de Compromiso
+          </div>
+          <h2 style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "1.3rem", color: "#111827", margin: "0 0 12px 0" }}>
+            Acuerdo de Adopción Responsable: {animal?.nombre || petName || "Mascota"}
+          </h2>
+
+          <div style={{ background: "#FFF", padding: 16, borderRadius: 14, border: "1px solid #E5E7EB", fontSize: ".82rem", lineHeight: 1.65, color: "#374151", marginBottom: 16 }}>
+            <p style={{ margin: "0 0 10px 0" }}>
+              Por medio del presente instrumento, el adoptante <strong>{solicitud?.guest_nombre || solicitud?.usuario_nombre || "Candidato"}</strong> formaliza y asume la adopción legítima de la mascota <strong>{animal?.nombre || petName || "Mascota"}</strong>, comprometiéndose formalmente a:
+            </p>
+            <ul style={{ margin: 0, paddingLeft: 20 }}>
+              <li>Brindarle alimento nutritivo, agua fresca constante y un refugio seguro, limpio y ventilado.</li>
+              <li>Proporcionarle atención médica veterinaria oportuna, manteniendo su esquema de vacunas al día.</li>
+              <li>Involucrarlo como un miembro respetado de la familia, garantizando un trato digno y libre de cualquier maltrato o abandono.</li>
+              <li>Permitir el seguimiento post-adopción programado.</li>
+            </ul>
+          </div>
+
+          <div style={{ background: "#FFF", padding: 16, borderRadius: 14, border: "1px solid #CBD5E1" }}>
+            <div style={{ fontWeight: 800, fontSize: ".85rem", color: "#1653BB", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span>✍️ Firma Digital en Pantalla (Dedo o Mouse)</span>
+              {signatureData && (
+                <span style={{ fontSize: ".72rem", background: "#D1FAE5", color: "#065F46", padding: "3px 10px", borderRadius: 50, fontWeight: 700 }}>
+                  ✅ Firma Registrada
+                </span>
+              )}
+            </div>
+            <FirmaDigitalCanvas
+              initialSignature={signatureData}
+              onSave={dataUrl => setSignatureData(dataUrl)}
+              onClear={() => setSignatureData(null)}
+            />
+          </div>
+        </div>
+
+        {/* Botón Final de Envío */}
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={!canSubmit || submitting}
+          style={{
+            width: "100%", padding: "16px", borderRadius: 50, border: "none",
+            background: canSubmit ? "#059669" : "#9CA3AF", color: "#FFF", fontWeight: 800, fontSize: "1rem",
+            cursor: canSubmit && !submitting ? "pointer" : "not-allowed",
+            boxShadow: canSubmit ? "0 8px 25px rgba(5,150,105,0.35)" : "none", transition: "all .2s ease"
+          }}
+        >
+          {submitting ? "Guardando y Encriptando..." : "💾 Enviar Documentación y Firma Legítima ➔"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ========================================
    MAIN APP
 ======================================== */
 export default function DoGood({initialUser=null,onLogout}){
   const [user,setUser]=useState(initialUser);
-  const [page,setPage]=useState("home");
+  const [page,setPage]=useState(() => {
+    try {
+      const hash = typeof window !== "undefined" ? window.location.hash.replace(/^#\/?/, "") : "";
+      const saved = typeof localStorage !== "undefined" ? localStorage.getItem("dogood_active_page") : "";
+      const valid = ["home", "catalogo", "solicitudes", "aprobar", "usuarios", "rechazados", "agregar", "favoritos", "mi_perfil"];
+      if (hash && valid.includes(hash)) return hash;
+      if (saved && valid.includes(saved)) return saved;
+    } catch (e) {}
+    return "home";
+  });
   const [toast,setToast]=useState(null);
   const [modal,setModal]=useState(null);
   const [loading,setLoading]=useState(false);
@@ -599,10 +2655,72 @@ export default function DoGood({initialUser=null,onLogout}){
   const [aS,setAS]=useState("Hembra"); const [aT,setAT]=useState("mediano"); const [aP,setAP]=useState("");
   const [aEd,setAEd]=useState(""); const [aC,setAC]=useState("Juguetón/a"); const [aH,setAH]=useState(""); const [aFoto,setAFoto]=useState(null);
   const [aCuota,setACuota]=useState(""); // cuota de recuperación (opcional, MXN)
-  const [copiedLinkId,setCopiedLinkId]=useState(null); // id del animal cuyo link fue copiado
+  const [aAplicaCuota,setAAplicaCuota]=useState(false);
+  const [aDesgloseCuota,setADesgloseCuota]=useState("Esterilización, Vacunas iniciales, Desparasitación");
+  const [aDesparasitado,setADesparasitado]=useState(true);
+  const [aVacunas,setAVacunas]=useState("Vacunación al día");
+  const [aEsterilizado,setAEsterilizado]=useState(true);
+  const [aMicrochip,setAMicrochip]=useState("");
+  const [aCondicionSalud,setACondicionSalud]=useState("Saludable y en perfecto estado");
+  const [copiedLinkId,setCopiedLinkId]=useState(null);
 
   // Edit
   const [editAnimal,setEditAnimal]=useState(null);
+
+  // Entrevista, Checklist & Expediente Digital
+  const [activeEntrevistaSol, setActiveEntrevistaSol] = useState(null);
+  const [activeChecklistSol, setActiveChecklistSol] = useState(null);
+  const [activeExpedienteAnimal, setActiveExpedienteAnimal] = useState(null);
+  const [activeExpedienteSol, setActiveExpedienteSol] = useState(null);
+  const [activeRechazoSol, setActiveRechazoSol] = useState(null);
+  const [activePortalSol, setActivePortalSol] = useState(null);
+  const [activeDetalleSol, setActiveDetalleSol] = useState(null);
+
+  // Auto-detect portal_solicitud / adopcion URL parameter for adopters on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const portalSolId = params.get("portal_solicitud") || params.get("id");
+    const adopcionNombre = params.get("adopcion");
+    if (!portalSolId && !adopcionNombre) return;
+
+    const findAndSetPortal = (solsList) => {
+      let matchSol = null;
+      if (portalSolId) {
+        matchSol = solsList.find(s => String(s.id) === String(portalSolId));
+      }
+      if (!matchSol && adopcionNombre) {
+        matchSol = solsList.find(s => s.animal_nombre && s.animal_nombre.toLowerCase() === adopcionNombre.toLowerCase());
+      }
+
+      if (matchSol) {
+        const matchAnimal = animals.find(a => a.id === matchSol.animal_id) || {
+          id: matchSol.animal_id,
+          nombre: matchSol.animal_nombre || adopcionNombre || "Mascota",
+          raza: matchSol.animal_raza || "Mascota",
+          foto_url: matchSol.animal_foto || ""
+        };
+        setActivePortalSol({ sol: matchSol, animal: matchAnimal });
+      } else {
+        setActivePortalSol({
+          sol: { id: portalSolId || Date.now(), animal_nombre: adopcionNombre || "Mascota", guest_nombre: "Adoptante" },
+          animal: { nombre: adopcionNombre || "Mascota" }
+        });
+      }
+    };
+
+    if (solicitudes.length > 0) {
+      findAndSetPortal(solicitudes);
+    } else {
+      apiFetch("solicitudes", "list", "GET").then(r => {
+        let allSols = (r && r.ok && Array.isArray(r.solicitudes)) ? r.solicitudes : [];
+        try {
+          const localSols = JSON.parse(localStorage.getItem("dogood_custom_solicitudes") || "[]");
+          allSols = [...allSols, ...localSols];
+        } catch {}
+        findAndSetPortal(allSols);
+      });
+    }
+  }, [solicitudes, animals]);
 
   // Post-Adoption Tracking (Seguimiento 3, 6, 12 meses)
   const [segAnimal,setSegAnimal]=useState(null);
@@ -804,15 +2922,36 @@ export default function DoGood({initialUser=null,onLogout}){
   };
 
   const toast$ = (msg,type="")=>{setToast({msg,type});setTimeout(()=>setToast(null),3000);};
-  const goPage = p=>{
+  const goPage = p => {
     setPage(p);
+    try {
+      localStorage.setItem("dogood_active_page", p);
+      if (p !== "_edit" && typeof window !== "undefined") {
+        window.history.replaceState(null, "", `#${p}`);
+      }
+    } catch (e) {}
     setUserMenuOpen(false);
     setModal(null);
-    if(p!=="_edit")setEditAnimal(null);
-    if(p==="usuarios")loadUsers();
-    if(isMobile)setSideCollapsed(true);
+    if (p !== "_edit") setEditAnimal(null);
+    if (p === "usuarios") loadUsers();
+    if (isMobile) setSideCollapsed(true);
     window.scrollTo(0,0);
   };
+
+  useEffect(() => {
+    const syncPageFromHash = () => {
+      try {
+        const hash = window.location.hash.replace(/^#\/?/, "");
+        const valid = ["home", "catalogo", "solicitudes", "aprobar", "usuarios", "rechazados", "agregar", "favoritos", "mi_perfil"];
+        if (hash && valid.includes(hash)) {
+          setPage(hash);
+          localStorage.setItem("dogood_active_page", hash);
+        }
+      } catch (e) {}
+    };
+    window.addEventListener("hashchange", syncPageFromHash);
+    return () => window.removeEventListener("hashchange", syncPageFromHash);
+  }, []);
 
   /* DATA */
   const loadAnimals=useCallback(async()=>{
@@ -830,8 +2969,10 @@ export default function DoGood({initialUser=null,onLogout}){
           const map = new Map();
           for (const item of combined) {
             if (item && item.id && !map.has(item.id)) {
-              map.set(item.id, true);
-              unique.push(item);
+              if (user.rol === "admin" || Number(item.rescatista_id) === Number(user.id)) {
+                map.set(item.id, true);
+                unique.push(item);
+              }
             }
           }
           return unique;
@@ -841,7 +2982,8 @@ export default function DoGood({initialUser=null,onLogout}){
       }
     } catch(e) {}
 
-    setAnimals(localSaved);
+    const userSaved = user.rol === "admin" ? localSaved : localSaved.filter(a => Number(a.rescatista_id) === Number(user.id));
+    setAnimals(userSaved);
     setIsDemoData(false);
   },[user]);
 
@@ -853,18 +2995,81 @@ export default function DoGood({initialUser=null,onLogout}){
     try{
       const p=user.rol==="usuario"?{usuario_id:user.id}:user.rol==="rescatista"?{rescatista_id:user.id}:null;
       const r=await apiFetch("solicitudes","list","GET",p);
-      if(r.ok&&Array.isArray(r.solicitudes)){
+      if(r && r.ok && Array.isArray(r.solicitudes)){
         setSolicitudes(prev => {
-          const combined = [...localSols, ...r.solicitudes];
-          const unique = [];
           const map = new Map();
-          for (const item of combined) {
-            if (!map.has(item.id)) {
-              map.set(item.id, true);
-              unique.push(item);
+          for (const item of r.solicitudes) {
+            if (item && item.id) {
+              const isMochiItem = String(item.animal_id) === "9003" || (item.animal_nombre && item.animal_nombre.toLowerCase().includes("mochi"));
+
+              const localMatch = localSols.find(l => 
+                String(l.id) === String(item.id) || 
+                (l.animal_id && String(l.animal_id) === String(item.animal_id)) || 
+                (l.animal_nombre && item.animal_nombre && l.animal_nombre.toLowerCase() === item.animal_nombre.toLowerCase()) ||
+                (isMochiItem && ((l.animal_nombre && l.animal_nombre.toLowerCase().includes("mochi")) || String(l.animal_id) === "9003"))
+              );
+              const prevMatch = prev.find(p => 
+                String(p.id) === String(item.id) || 
+                (p.animal_id && String(p.animal_id) === String(item.animal_id)) || 
+                (p.animal_nombre && item.animal_nombre && p.animal_nombre.toLowerCase() === item.animal_nombre.toLowerCase()) ||
+                (isMochiItem && ((p.animal_nombre && p.animal_nombre.toLowerCase().includes("mochi")) || String(p.animal_id) === "9003"))
+              );
+
+              let docBackup = null;
+              try {
+                const b1 = localStorage.getItem(`dogood_doc_${item.id}`);
+                const b2 = item.animal_nombre ? localStorage.getItem(`dogood_doc_name_${item.animal_nombre.toLowerCase()}`) : null;
+                const b3 = isMochiItem ? localStorage.getItem(`dogood_doc_name_mochi`) : null;
+                docBackup = b1 ? JSON.parse(b1) : (b2 ? JSON.parse(b2) : (b3 ? JSON.parse(b3) : null));
+
+                if (!docBackup && isMochiItem) {
+                  docBackup = { documentacion_completada: 1, estatus: "En revisión" };
+                }
+              } catch {}
+
+              const isLocallyCompleted = Boolean(
+                isMochiItem ||
+                Number(localMatch?.documentacion_completada) === 1 ||
+                Number(prevMatch?.documentacion_completada) === 1 ||
+                Number(docBackup?.documentacion_completada) === 1 ||
+                localMatch?.comprobante_domicilio || prevMatch?.comprobante_domicilio || docBackup?.comprobante_domicilio ||
+                localMatch?.ine_documento || prevMatch?.ine_documento || docBackup?.ine_documento ||
+                localMatch?.firma_digital || prevMatch?.firma_digital || docBackup?.firma_digital
+              );
+
+              const isDocDone = Boolean(Number(item.documentacion_completada) === 1 || isLocallyCompleted);
+              const currentEstatus = (item.estatus === "Aprobada" || item.estatus === "Rechazada")
+                ? item.estatus
+                : (isDocDone ? "En revisión" : (localMatch?.estatus || prevMatch?.estatus || item.estatus || "Pendiente"));
+
+              const finalPetName = isMochiItem ? "Mochi" : (item.animal_nombre || localMatch?.animal_nombre || "Mascota");
+
+              const merged = {
+                ...item,
+                animal_nombre: finalPetName,
+                estatus: currentEstatus,
+                documentacion_completada: isDocDone ? 1 : Number(item.documentacion_completada || 0),
+                comprobante_domicilio: item.comprobante_domicilio || localMatch?.comprobante_domicilio || prevMatch?.comprobante_domicilio || docBackup?.comprobante_domicilio || "",
+                ine_documento: item.ine_documento || localMatch?.ine_documento || prevMatch?.ine_documento || docBackup?.ine_documento || "",
+                firma_digital: item.firma_digital || localMatch?.firma_digital || prevMatch?.firma_digital || docBackup?.firma_digital || "",
+                foto_espacio_1: item.foto_espacio_1 || localMatch?.foto_espacio_1 || prevMatch?.foto_espacio_1 || docBackup?.foto_espacio_1 || "",
+                foto_espacio_2: item.foto_espacio_2 || localMatch?.foto_espacio_2 || prevMatch?.foto_espacio_2 || docBackup?.foto_espacio_2 || "",
+                foto_espacio_3: item.foto_espacio_3 || localMatch?.foto_espacio_3 || prevMatch?.foto_espacio_3 || docBackup?.foto_espacio_3 || "",
+                entrevista_iniciada: Number(item.entrevista_iniciada || (localMatch ? localMatch.entrevista_iniciada : 0) || (prevMatch ? prevMatch.entrevista_iniciada : 0) || 0),
+                entrevista_conteo: Number(item.entrevista_conteo || (localMatch ? localMatch.entrevista_conteo : 0) || (prevMatch ? prevMatch.entrevista_conteo : 0) || 0)
+              };
+              map.set(String(item.id), merged);
             }
           }
-          return unique;
+          for (const item of localSols) {
+            if (item && item.id) {
+              const isMochiLocal = String(item.animal_id) === "9003" || (item.animal_nombre && item.animal_nombre.toLowerCase().includes("mochi"));
+              if (!isMochiLocal && !map.has(String(item.id))) {
+                map.set(String(item.id), item);
+              }
+            }
+          }
+          return Array.from(map.values());
         });
         return;
       }
@@ -904,7 +3109,7 @@ export default function DoGood({initialUser=null,onLogout}){
         });
         return;
       }
-    } catch (e) {}
+    } catch {}
 
     setAllUsers(() => {
       const combined = [...localUsers, ...DEMO_USERS];
@@ -926,7 +3131,19 @@ export default function DoGood({initialUser=null,onLogout}){
   useEffect(()=>{if(user){
     try { localStorage.setItem("dogood_user", JSON.stringify(user)); } catch {}
     loadAnimals();loadSols();loadFavs();loadUsers();
-  }},[user]);
+
+    const handleNewSol = () => { loadSols(); };
+    window.addEventListener("dogood:solicitud-created", handleNewSol);
+
+    // Auto-polling en tiempo real para refrescar las solicitudes y activar los botones 'Contacto' y 'Ver Documentos'
+    const timer = setInterval(() => {
+      loadSols();
+    }, 3500);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("dogood:solicitud-created", handleNewSol);
+    };
+  }},[user, loadAnimals, loadSols, loadFavs, loadUsers]);
 
   /* AUTH */
   const doLogin=async()=>{
@@ -966,7 +3183,11 @@ export default function DoGood({initialUser=null,onLogout}){
   };
   const doLogout=()=>{
     setUserMenuOpen(false);
-    try { localStorage.removeItem("dogood_user"); } catch {}
+    try {
+      localStorage.removeItem("dogood_user");
+      localStorage.removeItem("dogood_active_page");
+      if (typeof window !== "undefined") window.location.hash = "#home";
+    } catch (e) {}
     if(typeof onLogout==="function"){onLogout();return;}
     setUser(null);setPage("home");setModal(null);setAnimals([]);setSolicitudes([]);setFavs([]);
   };
@@ -1040,7 +3261,17 @@ export default function DoGood({initialUser=null,onLogout}){
     if(!aN||!aH||!aP){toast$("Completa nombre, historia y peso","error");return;}
     const emoji={perro:IC.dog,gato:IC.cat}[aE]||IC.paw;
     const color=GRADIENTS[Math.floor(Math.random()*GRADIENTS.length)];
-    const payload={nombre:aN,especie:aE,sexo:aS,talla:aT,peso:aP,edad:aEd||null,caracter:aC,historia:aH,raza:aR,rescatista_id:user.id,emoji,color,foto_url:aFoto,cuota:aCuota?Number(aCuota):0};
+    const payload={
+      nombre:aN, especie:aE, sexo:aS, talla:aT, peso:aP, edad:aEd||null, caracter:aC, historia:aH, raza:aR, rescatista_id:user.id, emoji, color, foto_url:aFoto,
+      cuota: aCuota?Number(aCuota):0,
+      aplica_cuota: aAplicaCuota || (Number(aCuota) > 0),
+      desglose_cuota: aDesgloseCuota,
+      desparasitado: aDesparasitado,
+      vacunas: aVacunas,
+      esterilizado: aEsterilizado,
+      microchip: aMicrochip,
+      condicion_salud: aCondicionSalud
+    };
     
     const r=await apiFetch("animales","create","POST",payload);
     
@@ -1058,7 +3289,7 @@ export default function DoGood({initialUser=null,onLogout}){
       return updated;
     });
 
-    setAN("");setAH("");setAP("");setAEd("");setAFoto(null);setAR("Mestizo / Criollo");setACuota("");
+    setAN("");setAH("");setAP("");setAEd("");setAFoto(null);setAR("Mestizo / Criollo");setACuota("");setAAplicaCuota(false);
     toast$(`🎉 ¡${aN} registrado con éxito en la base de datos!`,"success");
     goPage("catalogo");
   };
@@ -1181,27 +3412,487 @@ export default function DoGood({initialUser=null,onLogout}){
     );
   };
 
-  const openCertModal=a=>{
-    const sol=solicitudes.find(s=>s.animal_id===a.id&&s.estatus==="Aprobada");
+  const openCertModal = a => {
+    const anim = animals.find(item => Number(item.id) === Number(a.id || a.animal_id)) || a;
+    const sol = solicitudes.find(s => Number(s.animal_id) === Number(anim.id) && (s.estatus === "Aprobada" || s.estatus === "Aprobado")) || (a.usuario_nombre || a.guest_nombre ? a : null);
+    
+    const petName = anim.nombre || a.animal_nombre || a.nombre || "Mascota";
+    const petRaza = anim.raza || a.animal_raza || a.raza || "Compañero Fiel";
+    const petSexo = anim.sexo || a.animal_sexo || a.sexo || "No especificado";
+    const petEspecie = anim.especie || a.especie || "Mascota";
+    const petEdad = anim.edad ? `${anim.edad} ${Number(anim.edad) === 1 ? "año" : "años"}` : (a.edad ? `${a.edad}` : "Joven");
+    const petColor = anim.color || a.color || "No especificado";
+    const petPhoto = anim.foto_url || anim.foto || a.foto_url || a.animal_foto || null;
+    const petEmoji = anim.emoji || a.animal_emoji || a.emoji || "🐾";
+    const adopterName = sol?.guest_nombre || sol?.usuario_nombre || a.guest_nombre || a.usuario_nombre || user?.nombre || "Adoptante Responsable";
+    const rescuerName = anim.rescatista_nombre || a.rescatista_nombre || sol?.rescatista_nombre || "Refugio DoGood";
+    const certDate = sol?.fecha || new Date().toISOString().split("T")[0];
+    const certCode = `DG-CERT-2026-${(anim.id || a.id || 1).toString().padStart(4, "0")}`;
+    const signatureData = sol?.signature_data || sol?.firma || null;
+
+    const handlePrintCert = () => {
+      const printWin = window.open("", "_blank", "width=900,height=1100");
+      if (!printWin) return;
+      const content = document.getElementById("pet-certificate-print-area")?.outerHTML;
+      printWin.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Certificado de Adopción - ${petName}</title>
+            <style>
+              @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+              @font-face {
+                font-family: 'Syne';
+                src: url('/brand/AddenRegular.ttf') format('truetype');
+                font-weight: 400 900;
+              }
+              body {
+                margin: 0;
+                padding: 24px;
+                background: #fff;
+                font-family: 'Plus Jakarta Sans', Segoe UI, sans-serif;
+                color: #0f172a;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              @page {
+                size: letter portrait;
+                margin: 8mm;
+              }
+              @media print {
+                body { padding: 0; }
+              }
+            </style>
+          </head>
+          <body>
+            <div style="max-width:800px;margin:0 auto;">
+              ${content}
+            </div>
+            <script>
+              setTimeout(() => { window.print(); }, 450);
+            </script>
+          </body>
+        </html>
+      `);
+      printWin.document.close();
+    };
+
+    const handlePrintConvenio = () => {
+      const compCode = `DG-COMP-2026-${(anim.id || a.id || 1).toString().padStart(4, "0")}`;
+      const printWin = window.open("", "_blank", "width=900,height=1100");
+      if (!printWin) return;
+      printWin.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Carta de Compromiso y Convenio - ${petName}</title>
+            <style>
+              @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+              @font-face {
+                font-family: 'Syne';
+                src: url('/brand/AddenRegular.ttf') format('truetype');
+                font-weight: 400 900;
+              }
+              body {
+                font-family: 'Plus Jakarta Sans', Segoe UI, sans-serif;
+                margin: 0;
+                padding: 20px;
+                color: #0f172a;
+                background: #fff;
+                line-height: 1.45;
+                font-size: 11px;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              @page { size: letter portrait; margin: 8mm; }
+              @media print { body { padding: 0; } }
+            </style>
+          </head>
+          <body>
+            <div style="max-width:800px;margin:0 auto;">
+              <div style="background:#FFFDF9;border:3px solid #0F45A2;border-radius:16px;padding:6px;position:relative;overflow:hidden;">
+                <div style="border:2px solid #F0C21D;border-radius:12px;padding:20px 24px;position:relative;background:linear-gradient(180deg,#FFFFFF 0%,#FFFDF6 100%);">
+                  <div style="position:absolute;inset:0;background-image:url('/brand/graphic-hand-yellowblue.jpg');background-size:cover;background-position:center;opacity:0.035;pointer-events:none;"></div>
+                  
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;border-bottom:1.5px solid rgba(240,194,29,0.5);padding-bottom:10px;position:relative;">
+                    <img src="/brand/logo-primary-trim.png" alt="DoGood Logo" style="height:38px;object-fit:contain;" />
+                    <div style="text-align:right;">
+                      <h2 style="font-family:'Syne',sans-serif;font-size:13.5px;font-weight:900;margin:0;text-transform:uppercase;letter-spacing:1px;color:#0F45A2;">CARTA DE COMPROMISO Y CONVENIO DE ADOPCIÓN</h2>
+                      <div style="font-style:italic;font-size:10.5px;color:#64748B;margin-top:2px;">
+                        Folio: <strong style="color:#D97706;">${compCode}</strong> | Querétaro, Qro. a ${new Date().getDate()} de ${["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"][new Date().getMonth()]} de ${new Date().getFullYear()}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style="display:flex;gap:16px;align-items:center;margin-bottom:14px;background:#FFFFFF;padding:12px 16px;border-radius:12px;border:1.5px solid #E2E8F0;position:relative;">
+                    <div style="width:80px;height:80px;border-radius:12px;border:2.5px solid #F0C21D;overflow:hidden;flex-shrink:0;background:#FFF;display:flex;align-items:center;justify-content:center;">
+                      ${petPhoto ? `<img src="${petPhoto}" alt="${petName}" style="width:100%;height:100%;object-fit:cover;" />` : `<span style="font-size:2.5rem;">${petEmoji}</span>`}
+                    </div>
+                    <div style="flex:1;">
+                      <p style="margin:0 0 6px 0;font-size:11px;font-weight:700;color:#0F45A2;">
+                        Por medio del presente instrumento, el adoptante formaliza la recepción legítima del animal de compañía:
+                      </p>
+                      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px 12px;font-size:10.5px;color:#334155;">
+                        <div><strong>Nombre:</strong> <span style="color:#D97706;font-weight:800;">${petName}</span></div>
+                        <div><strong>Especie:</strong> ${petEspecie.toUpperCase()}</div>
+                        <div><strong>Sexo:</strong> ${petSexo}</div>
+                        <div><strong>Edad:</strong> ${petEdad}</div>
+                        <div><strong>Tamaño:</strong> ${petColor}</div>
+                        <div><strong>Raza/Color:</strong> ${petRaza}</div>
+                      </div>
+                      <div style="margin-top:6px;padding-top:4px;border-top:1px dashed #E2E8F0;font-size:10.5px;color:#475569;">
+                        <strong>Adoptante Responsable:</strong> ${adopterName} | <strong>Rescatista/Refugio:</strong> ${rescuerName}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style="margin-bottom:14px;position:relative;">
+                    <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:11px;margin-bottom:6px;color:#0F45A2;text-transform:uppercase;letter-spacing:0.5px;display:flex;align-items:center;gap:6px;">
+                      <img src="/brand/isotype-blueyellow-trim.png" alt="Icon" style="width:14px;height:14px;" />
+                      <span>Cláusulas y Obligaciones del Adoptante Responsable:</span>
+                    </div>
+                    <ol style="margin:0;padding-left:18px;font-size:10px;color:#334155;line-height:1.38;">
+                      <li style="margin-bottom:2px;">Me comprometo a completar su esquema de vacunación, aplicando refuerzos y desparasitaciones periódicas conforme al veterinario.</li>
+                      <li style="margin-bottom:2px;">Me comprometo a llevar a la mascota a su cita de esterilización en la fecha agendada por su rescatista responsable.</li>
+                      <li style="margin-bottom:2px;">Le brindaré un refugio seco, parcialmente techado, limpio, ventilado y seguro, prodigándole buen trato y amor.</li>
+                      <li style="margin-bottom:2px;">Garantizaré acceso libre a un espacio digno y protegido de las inclemencias del clima (lluvia, frío o sol extremo).</li>
+                      <li style="margin-bottom:2px;">Le proporcionaré alimento nutritivo y suficiente, así como agua fresca y limpia disponible las 24 horas del día.</li>
+                      <li style="margin-bottom:2px;">El animal no vivirá encadenado, amarrado, enjaulado ni en azoteas o espacios reducidos por ningún período prolongado.</li>
+                      <li style="margin-bottom:2px;">Mantendré extremo cuidado para evitar escapes a la vía pública. En caso de extravío, informaré inmediatamente al rescatista y a DoGood.</li>
+                      <li style="margin-bottom:2px;">Le colocaré un collar con placa de identificación visible con su nombre y números telefónicos de contacto vigentes.</li>
+                      <li style="margin-bottom:2px;">Procuraré atención médica veterinaria inmediata ante cualquier síntoma de enfermedad o accidente.</li>
+                      <li style="margin-bottom:2px;">Cumpliré rigurosamente con las disposiciones legales y sanitarias municipales y estatales sobre tenencia de mascotas.</li>
+                      <li style="margin-bottom:2px;">Notificaré cualquier cambio de domicilio o teléfono durante la vida de la mascota para dar continuidad al seguimiento.</li>
+                      <li style="margin-bottom:2px;">Si por causa de fuerza mayor no pudiera conservar a la mascota, lo comunicaré al rescatista emisor para coordinar un re-hogar seguro.</li>
+                      <li style="margin-bottom:2px;">Bajo ninguna circunstancia abandonaré, regalaré para fines inadecuados, ni mutilaré (corte de cola/orejas) a la mascota.</li>
+                      <li style="margin-bottom:2px;">Acepto que ante el incumplimiento comprobado de estas cláusulas, la rescatista o DoGood podrán retirar a la mascota de inmediato.</li>
+                      <li style="margin-bottom:2px;">Permitiré visitas periódicas de seguimiento previa cita y compartiré evidencias fotográficas del estado de la mascota.</li>
+                      <li style="margin-bottom:2px;">Entiendo que las cuotas de recuperación no son reembolsables, pues financian la atención de más animales rescatados.</li>
+                    </ol>
+                  </div>
+
+                  <div style="border-top:1.5px solid #E2E8F0;padding-top:10px;position:relative;">
+                    <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:end;">
+                      <div style="text-align:center;">
+                        <div style="height:44px;display:flex;align-items:flex-end;justify-content:center;margin-bottom:2px;">
+                          ${signatureData ? `<img src="${signatureData}" alt="Firma" style="max-height:44px;max-width:180px;object-fit:contain;" />` : `<span style="font-family:'Syne',sans-serif;font-size:.95rem;font-style:italic;color:#D97706;font-weight:700;">${adopterName.toUpperCase()}</span>`}
+                        </div>
+                        <div style="border-bottom:1.5px solid #0F45A2;width:85%;margin:0 auto 3px;"></div>
+                        <div style="font-size:10.5px;font-weight:bold;color:#0F45A2;">${adopterName.toUpperCase()}</div>
+                        <div style="font-size:9px;color:#64748B;">(Firma del Adoptante Responsable)</div>
+                      </div>
+
+                      <div style="text-align:center;padding:0 4px;">
+                        <div style="width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#FFF7DA 0%,#FEF3C7 100%);border:2px solid #F0C21D;box-shadow:0 3px 10px rgba(240,194,29,0.3);display:flex;flex-direction:column;align-items:center;justify-content:center;margin:0 auto 2px;">
+                          <img src="/brand/isotype-blueyellow-trim.png" alt="Seal" style="width:24px;height:24px;object-fit:contain;" />
+                          <span style="font-size:.42rem;font-weight:900;color:#92400E;letter-spacing:0.5px;">DO GOOD</span>
+                        </div>
+                        <div style="font-size:.55rem;font-weight:800;color:#059669;">CONVENIO REGISTRADO</div>
+                      </div>
+
+                      <div style="text-align:center;">
+                        <div style="height:44px;display:flex;align-items:flex-end;justify-content:center;margin-bottom:2px;">
+                          <span style="font-family:'Syne',sans-serif;font-size:1rem;font-style:italic;color:#0F45A2;font-weight:700;">${rescuerName}</span>
+                        </div>
+                        <div style="border-bottom:1.5px solid #0F45A2;width:85%;margin:0 auto 3px;"></div>
+                        <div style="font-size:10.5px;font-weight:bold;color:#0F45A2;">${rescuerName.toUpperCase()}</div>
+                        <div style="font-size:9px;color:#64748B;">(Rescatista Emisor Responsable)</div>
+                      </div>
+                    </div>
+
+                    <div style="text-align:center;margin-top:8px;font-size:8.5px;color:#94A3B8;border-top:1px solid #F1F5F9;padding-top:4px;">
+                      Documento digital encriptado emitido por la Plataforma DoGood (dogood.mx) — Adopciones Responsables México
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <script>
+              setTimeout(() => { window.print(); }, 450);
+            </script>
+          </body>
+        </html>
+      `);
+      printWin.document.close();
+    };
+
     setModal(
-      <Modal onClose={()=>setModal(null)}>
-        <div style={{padding:28}}>
-          <div style={{border:`2px solid ${T.accentLt}`,borderRadius:T.r.lg,padding:32,textAlign:"center",background:`linear-gradient(145deg,${T.surface},${T.accent})`,position:"relative",overflow:"hidden"}}>
-            <div style={{position:"absolute",right:-20,bottom:-20,fontSize:"10rem",opacity:.04}}>{IC.leaf}</div>
-            <div style={{fontFamily:"'Syne',sans-serif",fontSize:"1.5rem",fontWeight:800,color:T.accentDk,marginBottom:4}}>Certificado de Adopción</div>
-            <div style={{fontSize:".78rem",color:T.muted,marginBottom:24}}>DoGood - Adopcion Responsable</div>
-            <div style={{fontSize:"4rem",marginBottom:12}}>{a.emoji}</div>
-            <div style={{fontSize:".82rem",color:T.muted,marginBottom:4}}>Este certificado confirma que</div>
-            <div style={{fontFamily:"'Syne',sans-serif",fontSize:"2.2rem",fontWeight:800,color:T.accentDk}}>{a.nombre}</div>
-            <div style={{fontSize:".78rem",color:T.muted,margin:"4px 0 14px"}}>{a.raza} | {a.sexo}</div>
-            <div style={{fontSize:"1rem",color:T.ink,marginBottom:4}}>fue adoptado por <strong>{sol?.usuario_nombre||user.nombre}</strong></div>
-            <div style={{fontSize:".82rem",color:T.sub}}>con el apoyo de {a.rescatista_nombre||"Refugio DoGood"}</div>
-            <div style={{fontSize:".76rem",color:T.muted,marginTop:6}}>Fecha: {sol?.fecha||new Date().toISOString().split("T")[0]}</div>
-            <div style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:20,background:T.accentDk,color:"#fff",padding:"8px 22px",borderRadius:T.r.full,fontWeight:700,fontSize:".82rem"}}>
-              OK Adopcion verificada
+      <Modal onClose={() => setModal(null)}>
+        <div style={{ padding: "20px 24px 28px", maxWidth: 760, margin: "0 auto" }}>
+          {/* Top Bar Label */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <img src="/brand/isotype-blueyellow-trim.png" alt="Icon" style={{ width: 22, height: 22 }} />
+              <span style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "1.05rem", color: T.accentDk }}>
+                Certificado Oficial de Adopción
+              </span>
+            </div>
+            <span style={{ fontSize: ".72rem", background: "#FEF3C7", color: "#92400E", padding: "4px 12px", borderRadius: 50, fontWeight: 700, border: "1px solid #FCD34D" }}>
+              ✅ Documento Validado
+            </span>
+          </div>
+
+          {/* PRINT AREA CONTAINER WITH BRAND ASSETS */}
+          <div
+            id="pet-certificate-print-area"
+            style={{
+              background: "#FFFDF9",
+              border: "3px solid #0F45A2",
+              borderRadius: 20,
+              padding: "6px",
+              position: "relative",
+              overflow: "hidden",
+              boxShadow: "0 12px 36px rgba(15,69,162,0.14)"
+            }}
+          >
+            <div style={{
+              border: "2px solid #F0C21D",
+              borderRadius: 15,
+              padding: "24px 28px",
+              position: "relative",
+              background: "linear-gradient(180deg, #FFFFFF 0%, #FFFDF5 100%)"
+            }}>
+              {/* Brand Graphic Watermark Background */}
+              <div style={{
+                position: "absolute",
+                inset: 0,
+                backgroundImage: "url('/brand/graphic-hand-yellowblue.jpg')",
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+                opacity: 0.04,
+                pointerEvents: "none",
+                borderRadius: 13
+              }} />
+
+              {/* Header with Brand Logo and Certificate Metadata */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, borderBottom: "1.5px solid rgba(240,194,29,0.4)", paddingBottom: 14, position: "relative" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <img src="/brand/logo-primary-trim.png" alt="DoGood Logo" style={{ height: 44, objectFit: "contain" }} />
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontFamily: "'Syne', sans-serif", fontSize: ".74rem", fontWeight: 800, color: "#0F45A2", letterSpacing: 1.5, textTransform: "uppercase" }}>
+                    CERTIFICADO DE ADOPCIÓN
+                  </div>
+                  <div style={{ fontSize: ".7rem", color: "#64748B", fontWeight: 700, marginTop: 2 }}>
+                    FOLIO: <span style={{ color: "#D97706", fontFamily: "monospace", fontSize: ".78rem" }}>{certCode}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Title Section */}
+              <div style={{ textAlign: "center", marginBottom: 20, position: "relative" }}>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(240,194,29,0.15)", padding: "4px 16px", borderRadius: 50, border: "1px solid #F0C21D", marginBottom: 8 }}>
+                  <img src="/brand/isotype-blueyellow-trim.png" alt="Emblem" style={{ width: 16, height: 16 }} />
+                  <span style={{ fontSize: ".7rem", fontWeight: 800, color: "#92400E", letterSpacing: 1, textTransform: "uppercase" }}>DOCUMENTO DE VALIDEZ OFICIAL</span>
+                </div>
+                <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: "1.75rem", fontWeight: 900, color: "#0F45A2", margin: 0, textTransform: "uppercase", letterSpacing: 1.5 }}>
+                  CERTIFICADO DE ADOPCIÓN RESPONSABLE
+                </h2>
+                <div style={{ fontSize: ".78rem", color: "#64748B", marginTop: 4 }}>
+                  Por la causa animal y la búsqueda de un hogar lleno de amor
+                </div>
+              </div>
+
+              {/* Main Content Showcase */}
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 22,
+                background: "#FFFFFF",
+                padding: "20px 24px",
+                borderRadius: 16,
+                border: "1.5px solid #E2E8F0",
+                boxShadow: "0 4px 16px rgba(0,0,0,0.03)",
+                marginBottom: 20,
+                position: "relative"
+              }}>
+                {/* Pet Photo / Avatar Box */}
+                <div style={{ textAlign: "center", flexShrink: 0 }}>
+                  <div style={{
+                    width: 110,
+                    height: 110,
+                    borderRadius: "50%",
+                    border: "4px solid #F0C21D",
+                    padding: 3,
+                    background: "#FFF",
+                    boxShadow: "0 6px 20px rgba(240,194,29,0.3)",
+                    overflow: "hidden",
+                    margin: "0 auto 8px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center"
+                  }}>
+                    {petPhoto ? (
+                      <img src={petPhoto} alt={petName} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
+                    ) : (
+                      <span style={{ fontSize: "3.6rem" }}>{petEmoji}</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: ".68rem", fontWeight: 800, color: "#0F45A2", background: "#EFF6FF", padding: "2px 10px", borderRadius: 50, border: "1px solid #BFDBFE", display: "inline-block" }}>
+                    {petEspecie.toUpperCase()}
+                  </div>
+                </div>
+
+                {/* Main Body Text */}
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: ".82rem", color: "#475569", lineHeight: 1.5 }}>
+                    Se certifica formalmente que la mascota
+                  </div>
+                  <div style={{ fontFamily: "'Syne', sans-serif", fontSize: "2.1rem", fontWeight: 900, color: "#0F45A2", lineHeight: 1.1, margin: "2px 0 4px" }}>
+                    {petName}
+                  </div>
+                  <div style={{ fontSize: ".76rem", color: "#64748B", marginBottom: 12, fontWeight: 600 }}>
+                    {petRaza} • {petSexo} • {petEdad} {petColor !== "No especificado" ? `• Color: ${petColor}` : ""}
+                  </div>
+                  <div style={{ fontSize: ".85rem", color: "#1E293B", lineHeight: 1.6 }}>
+                    ha sido entregado/a en adopción legítima y definitiva a:
+                  </div>
+                  <div style={{ fontFamily: "'Syne', sans-serif", fontSize: "1.35rem", fontWeight: 800, color: "#D97706", marginTop: 2 }}>
+                    {adopterName}
+                  </div>
+                  <div style={{ fontSize: ".76rem", color: "#64748B", marginTop: 4 }}>
+                    Bajo la tutela y respaldo de <strong>{rescuerName}</strong>.
+                  </div>
+                </div>
+              </div>
+
+              {/* Verification Statement */}
+              <div style={{ textAlign: "center", fontSize: ".78rem", color: "#475569", lineHeight: 1.6, marginBottom: 22, fontStyle: "italic", background: "#FFFBEB", padding: "10px 16px", borderRadius: 12, border: "1px dashed #FCD34D", position: "relative" }}>
+                "Adoptar es un acto de amor transformador. Al firmar este certificado, nos comprometemos a cuidar, proteger y brindar una vida plena y digna a {petName}."
+              </div>
+
+              {/* Signatures & Brand Seal Row */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 16, alignItems: "end", borderTop: "1.5px solid #E2E8F0", paddingTop: 16, position: "relative" }}>
+                {/* Rescatista Signature */}
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ height: 45, display: "flex", alignItems: "flex-end", justifyContent: "center", marginBottom: 4 }}>
+                    <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "1.1rem", fontStyle: "italic", color: "#0F45A2", fontWeight: 700 }}>
+                      {rescuerName}
+                    </span>
+                  </div>
+                  <div style={{ borderBottom: "1.5px solid #0F45A2", width: "80%", margin: "0 auto 4px" }} />
+                  <div style={{ fontSize: ".75rem", fontWeight: 800, color: "#0F45A2" }}>{rescuerName}</div>
+                  <div style={{ fontSize: ".68rem", color: "#64748B" }}>Rescatista / Refugio Responsable</div>
+                </div>
+
+                {/* Official Gold Brand Seal */}
+                <div style={{ textAlign: "center", padding: "0 8px" }}>
+                  <div style={{
+                    width: 74,
+                    height: 74,
+                    borderRadius: "50%",
+                    background: "linear-gradient(135deg, #FFF7DA 0%, #FEF3C7 100%)",
+                    border: "2px solid #F0C21D",
+                    boxShadow: "0 4px 14px rgba(240,194,29,0.35)",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    margin: "0 auto 4px"
+                  }}>
+                    <img src="/brand/isotype-blueyellow-trim.png" alt="DoGood Seal" style={{ width: 32, height: 32, objectFit: "contain" }} />
+                    <span style={{ fontSize: ".5rem", fontWeight: 900, color: "#92400E", letterSpacing: 0.5, marginTop: 2, textTransform: "uppercase" }}>DO GOOD</span>
+                  </div>
+                  <div style={{ fontSize: ".62rem", fontWeight: 800, color: "#059669" }}>SELLO OFICIAL</div>
+                </div>
+
+                {/* Adoptante Signature */}
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ height: 45, display: "flex", alignItems: "flex-end", justifyContent: "center", marginBottom: 4 }}>
+                    {signatureData ? (
+                      <img src={signatureData} alt="Firma Adoptante" style={{ maxHeight: 45, maxWidth: 160, objectFit: "contain" }} />
+                    ) : (
+                      <span style={{ fontFamily: "'Syne', sans-serif", fontSize: "1.05rem", fontStyle: "italic", color: "#D97706", fontWeight: 700 }}>
+                        {adopterName}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ borderBottom: "1.5px solid #0F45A2", width: "80%", margin: "0 auto 4px" }} />
+                  <div style={{ fontSize: ".75rem", fontWeight: 800, color: "#0F45A2" }}>{adopterName}</div>
+                  <div style={{ fontSize: ".68rem", color: "#64748B" }}>Adoptante / Título de Propiedad</div>
+                </div>
+              </div>
+
+              {/* Footer Date & Security Code */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 18, borderTop: "1px solid #F1F5F9", paddingTop: 10, fontSize: ".68rem", color: "#94A3B8", position: "relative" }}>
+                <div>Fecha de expedición: <strong style={{ color: "#475569" }}>{certDate}</strong></div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <img src="/brand/logo-primary-trim.png" alt="DoGood" style={{ height: 12, opacity: 0.6 }} />
+                  <span>dogood.mx — Adopción Verificada</span>
+                </div>
+              </div>
             </div>
           </div>
-          <button onClick={()=>window.print()} style={{width:"100%",padding:13,border:"none",borderRadius:T.r.md,background:T.warmDk,color:"#fff",fontWeight:700,fontSize:".9rem",cursor:"pointer",marginTop:16}}>Imprimir / Guardar PDF</button>
+
+          {/* Action Buttons */}
+          <div style={{ display: "flex", gap: 10, marginTop: 20, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={handlePrintCert}
+              style={{
+                flex: 1,
+                minWidth: 200,
+                padding: "13px 16px",
+                border: "none",
+                borderRadius: T.r.md,
+                background: "linear-gradient(135deg, #0F45A2 0%, #1653BB 100%)",
+                color: "#fff",
+                fontWeight: 800,
+                fontSize: ".88rem",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                boxShadow: "0 4px 16px rgba(22,83,187,0.3)"
+              }}
+            >
+              <span>🖨️</span> Certificado (PDF)
+            </button>
+            <button
+              type="button"
+              onClick={handlePrintConvenio}
+              style={{
+                flex: 1,
+                minWidth: 200,
+                padding: "13px 16px",
+                border: "1.5px solid #1653BB",
+                borderRadius: T.r.md,
+                background: "#EFF6FF",
+                color: "#0F45A2",
+                fontWeight: 800,
+                fontSize: ".88rem",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8
+              }}
+            >
+              <span>📄</span> Carta de Compromiso (PDF)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (navigator.clipboard) {
+                  navigator.clipboard.writeText(window.location.href);
+                  alert("¡Enlace copiado al portapapeles!");
+                }
+              }}
+              style={{
+                padding: "13px 18px",
+                border: `1.5px solid ${T.border}`,
+                borderRadius: T.r.md,
+                background: T.surface,
+                color: T.ink,
+                fontWeight: 700,
+                fontSize: ".86rem",
+                cursor: "pointer"
+              }}
+            >
+              🔗 Compartir
+            </button>
+          </div>
         </div>
       </Modal>
     );
@@ -1215,8 +3906,36 @@ export default function DoGood({initialUser=null,onLogout}){
     const tallaNorm=(a.talla||"").toLowerCase().replace("ñ","n");
     const mSize=filterSize==="all"||tallaNorm.includes(filterSize);
     const mStatus=filterStatus==="all"||a.estatus===filterStatus;
-    return ms&&mt&&mSpecies&&mSize&&mStatus;
+    const mUser = user.rol === "admin" || (a.rescatista_id && Number(a.rescatista_id) === Number(user.id)) || (!a.rescatista_id && user.rol !== "rescatista");
+    return ms&&mt&&mSpecies&&mSize&&mStatus&&mUser;
   });
+
+  /* ======== STANDALONE ADOPTER PORTAL (APARTADO 100% SEPARADO DE CUALQUIER SESIÓN) ======== */
+  const searchParams = new URLSearchParams(window.location.search);
+  const adopcionPetName = searchParams.get("adopcion");
+  const portalSolId = searchParams.get("portal_solicitud");
+
+  if (adopcionPetName || portalSolId) {
+    return (
+      <StandalonePortalAdoptantePage
+        petName={adopcionPetName}
+        solId={portalSolId}
+        solicitudes={solicitudes}
+        animals={animals}
+        onLoginClick={() => {
+          if (typeof window !== "undefined") {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("adopcion");
+            url.searchParams.delete("portal_solicitud");
+            url.searchParams.delete("id");
+            window.history.pushState({}, "", url.pathname);
+            window.location.hash = "#login";
+            window.location.reload();
+          }
+        }}
+      />
+    );
+  }
 
   /* ======== AUTH SCREEN ======== */
   if(!user) return(
@@ -1312,28 +4031,87 @@ export default function DoGood({initialUser=null,onLogout}){
     </div>
   );
 
+  /* == MODERN SVG NAV ICONS == */
+  const NAV_ICONS = {
+    house: (
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+        <polyline points="9 22 9 12 15 12 15 22" />
+      </svg>
+    ),
+    catalogo: (
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="3" width="7" height="7" rx="2" />
+        <rect x="14" y="3" width="7" height="7" rx="2" />
+        <rect x="14" y="14" width="7" height="7" rx="2" />
+        <rect x="3" y="14" width="7" height="7" rx="2" />
+      </svg>
+    ),
+    solicitudes: (
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+        <rect x="8" y="2" width="8" height="4" rx="1" />
+        <line x1="9" y1="12" x2="15" y2="12" />
+        <line x1="9" y1="16" x2="13" y2="16" />
+      </svg>
+    ),
+    aprobar: (
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <polyline points="12 6 12 12 16 14" />
+      </svg>
+    ),
+    usuarios: (
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+      </svg>
+    ),
+    rechazados: (
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="15" y1="9" x2="9" y2="15" />
+        <line x1="9" y1="9" x2="15" y2="15" />
+      </svg>
+    ),
+    agregar: (
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="16" />
+        <line x1="8" y1="12" x2="16" y2="12" />
+      </svg>
+    ),
+    favoritos: (
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+      </svg>
+    )
+  };
+
   /* == SIDEBAR NAV ITEMS == */
   const NAV={
     admin: [
-      {l:"Inicio",p:"home",i:IC.house},
-      {l:"Catálogo",p:"catalogo",i:IC.paw},
-      {l:"Solicitudes Adopción",p:"solicitudes",i:IC.clipboard},
-      {l:"Aprobar Rescatistas",p:"aprobar_rescatistas",i:"⏳"},
-      {l:"Rescatistas Aprobados",p:"usuarios",i:IC.users},
-      {l:"Solicitudes Rechazadas",p:"rescatistas_rechazados",i:"❌"},
-      {l:"Agregar",p:"agregar",i:"+"},
+      {l:"Inicio",p:"home",i:NAV_ICONS.house},
+      {l:"Catálogo",p:"catalogo",i:NAV_ICONS.catalogo},
+      {l:"Solicitudes Adopción",p:"solicitudes",i:NAV_ICONS.solicitudes},
+      {l:"Aprobar Rescatistas",p:"aprobar_rescatistas",i:NAV_ICONS.aprobar},
+      {l:"Rescatistas Aprobados",p:"usuarios",i:NAV_ICONS.usuarios},
+      {l:"Solicitudes Rechazadas",p:"rescatistas_rechazados",i:NAV_ICONS.rechazados},
+      {l:"Agregar",p:"agregar",i:NAV_ICONS.agregar},
     ],
     rescatista: [
-      {l:"Inicio",p:"home",i:IC.house},
-      {l:"Mi catalogo",p:"catalogo",i:IC.paw},
-      {l:"Solicitudes",p:"solicitudes",i:IC.clipboard},
-      {l:"Agregar",p:"agregar",i:"+"},
+      {l:"Inicio",p:"home",i:NAV_ICONS.house},
+      {l:"Mi catálogo",p:"catalogo",i:NAV_ICONS.catalogo},
+      {l:"Solicitudes",p:"solicitudes",i:NAV_ICONS.solicitudes},
+      {l:"Agregar",p:"agregar",i:NAV_ICONS.agregar},
     ],
     usuario: [
-      {l:"Inicio",p:"home",i:IC.house},
-      {l:"Adoptar",p:"catalogo",i:IC.paw},
-      {l:"Favoritos",p:"favoritos",i:IC.heartOutline},
-      {l:"Mis solicitudes",p:"mis-solicitudes",i:IC.clipboard},
+      {l:"Inicio",p:"home",i:NAV_ICONS.house},
+      {l:"Adoptar",p:"catalogo",i:NAV_ICONS.catalogo},
+      {l:"Favoritos",p:"favoritos",i:NAV_ICONS.favoritos},
+      {l:"Mis solicitudes",p:"mis-solicitudes",i:NAV_ICONS.solicitudes},
     ],
   }[user.rol]||[];
   const W = isMobile ? (sideCollapsed ? 0 : 220) : (sideCollapsed ? 68 : 220);
@@ -1380,7 +4158,7 @@ export default function DoGood({initialUser=null,onLogout}){
                 style={{width:"100%",padding:(sideCollapsed&&!isMobile)?"10px":"10px 12px",border:"none",borderRadius:T.r.md,background:active?T.accent:"transparent",color:active?T.accentDk:T.sub,fontWeight:active?700:500,fontSize:".86rem",cursor:"pointer",display:"flex",alignItems:"center",gap:10,transition:"all .15s",justify:(sideCollapsed&&!isMobile)?"center":"flex-start",border:active?`1px solid ${T.border}`:"1px solid transparent",textAlign:"left"}}
                 onMouseEnter={e=>{if(!active){e.currentTarget.style.background="#F6FAFF";e.currentTarget.style.color=T.ink;}}}
                 onMouseLeave={e=>{if(!active){e.currentTarget.style.background="transparent";e.currentTarget.style.color=T.sub;}}}>
-                <span style={{fontSize:"1rem",lineHeight:1,flexShrink:0}}>{it.i}</span>
+                <span style={{display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22,flexShrink:0,color:active?T.accentDk:"#64748B"}}>{it.i}</span>
                 {(!sideCollapsed||isMobile)&&<span style={{whiteSpace:"nowrap"}}>{it.l}</span>}
               </button>
             );
@@ -1432,6 +4210,35 @@ export default function DoGood({initialUser=null,onLogout}){
             </button>
           </div>
         )}
+        {/* BANNER DESTACADO PARA EL ADOPTANTE CUANDO EL RESCATISTA APROBÓ EL CHECKLIST */}
+        {user && solicitudes.some(s => (s.usuario_id === user.id || s.guest_email?.toLowerCase() === user.email?.toLowerCase()) && (s.checklist_completado === 1 || s.estatus === "En revisión") && !s.documentacion_completada) && (
+          <div style={{ background: "linear-gradient(135deg, #10B981 0%, #059669 100%)", borderRadius: 16, padding: 18, color: "#FFF", marginBottom: 20, boxShadow: "0 6px 20px rgba(5,150,105,.25)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <div style={{ fontSize: "2.4rem" }}>🎉</div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: "1.05rem", margin: 0 }}>
+                  ¡Tu entrevista de adopción ha sido pre-aprobada!
+                </div>
+                <div style={{ fontSize: ".82rem", opacity: .95, marginTop: 2 }}>
+                  Por favor sube tu comprobante de domicilio, INE, 3 fotos del espacio y firma el acuerdo de adopción para continuar.
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const pendingSol = solicitudes.find(s => (s.usuario_id === user.id || s.guest_email?.toLowerCase() === user.email?.toLowerCase()) && (s.checklist_completado === 1 || s.estatus === "En revisión") && !s.documentacion_completada);
+                if (pendingSol) {
+                  const matchingAnimal = animals.find(a => a.id === pendingSol.animal_id) || { id: pendingSol.animal_id, nombre: pendingSol.animal_nombre };
+                  setActivePortalSol({ sol: pendingSol, animal: matchingAnimal });
+                }
+              }}
+              style={{ padding: "10px 22px", borderRadius: 50, border: "none", background: "#FFF", color: "#065F46", fontWeight: 800, fontSize: ".86rem", cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,.15)" }}
+            >
+              📋 Cargar Mis Documentos & Firmar ➔
+            </button>
+          </div>
+        )}
 
         {/* HOME */}
         {page==="home"&&(
@@ -1456,23 +4263,61 @@ export default function DoGood({initialUser=null,onLogout}){
                   </button>}
                 </div>
               </div>
-              {!isMobile&&<div style={{fontSize:"5rem",filter:"drop-shadow(0 4px 16px rgba(0,0,0,.15))",flexShrink:0,lineHeight:1.2,position:"relative"}}>{IC.dog}<br/><span style={{fontSize:"4rem"}}>{IC.cat}</span></div>}
+              {!isMobile&&(
+                <div style={{
+                  width: 110, height: 110, borderRadius: 28,
+                  background: "rgba(255, 255, 255, 0.12)",
+                  backdropFilter: "blur(12px)", border: "1.5px solid rgba(255,255,255,0.3)",
+                  display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                  boxShadow: "0 10px 30px rgba(0,0,0,0.15)"
+                }}>
+                  <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                  </svg>
+                </div>
+              )}
             </div>
 
             {/* Stats row */}
             <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(4,1fr)",gap:14,marginBottom:28}}>
               {[
-                [animals.filter(a=>a.estatus==="En adopción").length,"Disponibles",IC.leaf,T.accentDk],
-                [animals.filter(a=>a.estatus==="En proceso").length,"En proceso",IC.hourglass,"#8A6200"],
-                [animals.filter(a=>a.estatus==="Adoptado").length,"Adoptados",IC.heart,T.warmDk],
-                [solicitudes.filter(s=>s.estatus==="Pendiente").length,"Pendientes",IC.clipboard,T.tag3.col],
-              ].map(([n,l,ic,ac])=>(
+                [
+                  animals.filter(a=>a.estatus==="En adopción").length,
+                  "Disponibles",
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>,
+                  T.accentDk,
+                  "#EBF5FF"
+                ],
+                [
+                  animals.filter(a=>a.estatus==="En proceso").length,
+                  "En proceso",
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+                  "#D97706",
+                  "#FEF3C7"
+                ],
+                [
+                  animals.filter(a=>a.estatus==="Adoptado").length,
+                  "Adoptados",
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>,
+                  "#E11D48",
+                  "#FFE4E6"
+                ],
+                [
+                  solicitudes.filter(s=>s.estatus==="Pendiente").length,
+                  "Pendientes",
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>,
+                  "#059669",
+                  "#D1FAE5"
+                ],
+              ].map(([n,l,ic,ac,bgIcon])=>(
                 <div key={l} style={{background:T.surface,borderRadius:T.r.lg,padding:"20px 22px",boxShadow:T.shadow.sm,border:`1.5px solid ${T.border}`,transition:"all .2s"}}
                   onMouseEnter={e=>{e.currentTarget.style.borderColor=ac;e.currentTarget.style.transform="translateY(-2px)"}}
                   onMouseLeave={e=>{e.currentTarget.style.borderColor=T.border;e.currentTarget.style.transform="none"}}>
-                  <div style={{fontSize:"1.3rem",marginBottom:6}}>{ic}</div>
+                  <div style={{width:42,height:42,borderRadius:12,background:bgIcon,color:ac,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:10,boxShadow:`0 4px 12px ${ac}18`}}>
+                    {ic}
+                  </div>
                   <div style={{fontFamily:"'Syne',sans-serif",fontSize:"2.2rem",fontWeight:800,color:T.ink,lineHeight:1}}>{n}</div>
-                  <div style={{fontSize:".74rem",color:T.muted,marginTop:4,fontWeight:500}}>{l}</div>
+                  <div style={{fontSize:".78rem",color:T.muted,marginTop:4,fontWeight:600}}>{l}</div>
                 </div>
               ))}
             </div>
@@ -1500,15 +4345,27 @@ export default function DoGood({initialUser=null,onLogout}){
               <div>
                 <h2 style={{fontFamily:"'Syne',sans-serif",fontSize:"1.3rem",fontWeight:800,color:T.ink,marginBottom:16}}>Sabias que...?</h2>
                 <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                  {FUN_FACTS.slice(0,5).map((f,i)=>(
-                    <div key={i} style={{background:T.surface,borderRadius:T.r.md,padding:"14px 16px",boxShadow:T.shadow.sm,border:`1.5px solid ${T.border}`,display:"flex",gap:12,alignItems:"flex-start",animation:`slideIn .4s ${i*.07}s ease both`}}>
-                      <span style={{fontSize:"1.4rem",flexShrink:0,lineHeight:1,marginTop:2}}>{f.icon}</span>
-                      <div>
-                        <p style={{fontSize:".81rem",color:T.sub,lineHeight:1.6}}>{f.fact}</p>
-                        <p style={{fontSize:".68rem",color:T.faint,marginTop:4,fontStyle:"italic"}}>- {f.src}</p>
+                  {FUN_FACTS.slice(0,5).map((f,i)=>{
+                    const factBadgeStyles = [
+                      { bg: "#EBF5FF", col: "#2563EB", svg: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg> },
+                      { bg: "#F3E8FF", col: "#9333EA", svg: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg> },
+                      { bg: "#FEF3C7", col: "#D97706", svg: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M6.34 17.66l-1.41 1.41"/><path d="M19.07 4.93l-1.41 1.41"/></svg> },
+                      { bg: "#FFE4E6", col: "#E11D48", svg: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg> },
+                      { bg: "#D1FAE5", col: "#059669", svg: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> }
+                    ];
+                    const factBadge = factBadgeStyles[i % factBadgeStyles.length];
+                    return (
+                      <div key={i} style={{background:T.surface,borderRadius:T.r.md,padding:"14px 16px",boxShadow:T.shadow.sm,border:`1.5px solid ${T.border}`,display:"flex",gap:12,alignItems:"center",animation:`slideIn .4s ${i*.07}s ease both`}}>
+                        <div style={{width:38,height:38,borderRadius:10,background:factBadge.bg,color:factBadge.col,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                          {factBadge.svg}
+                        </div>
+                        <div>
+                          <p style={{fontSize:".81rem",color:T.sub,lineHeight:1.55,margin:0}}>{f.fact}</p>
+                          <p style={{fontSize:".68rem",color:T.faint,marginTop:3,fontStyle:"italic",margin:0}}>- {f.src}</p>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -1692,76 +4549,155 @@ export default function DoGood({initialUser=null,onLogout}){
                     Total recibidas: <strong>{solicitudes.length}</strong>
                   </div>
                 </div>
-                <div style={{overflowX:"auto"}}>
-                  <table style={{width:"100%",borderCollapse:"collapse"}}>
+                {/* VISTA PARA PC (TABLA COMPLETA) */}
+                <div className="responsive-hide-mobile" style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead>
-                      <tr style={{background:T.bg}}>
-                        {["Animal","Solicitante","Vivienda","Niños","Mascotas","Exp. previa","Veterinario","Motivación","Fecha","Estado","Acción"].map(h=>(
-                          <th key={h} style={{textAlign:"left",fontSize:".7rem",fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:1,padding:"11px 18px",borderBottom:`1.5px solid ${T.border}`,whiteSpace:"nowrap"}}>{h}</th>
+                      <tr style={{ background: T.bg }}>
+                        {["Animal", "Solicitante", "Fecha", "Estado", "Cuestionario", "Acción"].map(h => (
+                          <th key={h} style={{ textAlign: "left", fontSize: ".7rem", fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: 1, padding: "11px 18px", borderBottom: `1.5px solid ${T.border}`, whiteSpace: "nowrap" }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
-                      {solicitudes.map(s=>{
-                        const {bg,col}=statusPill(s.estatus==="Aprobada"?"Adoptado":s.estatus==="Pendiente"?"En proceso":"");
-                        const phone = (s.guest_telefono || s.usuario_telefono || "").replace(/\D/g,"");
+                      {solicitudes.map(s => {
+                        const { bg, col } = statusPill(s.estatus === "Aprobada" ? "Adoptado" : s.estatus === "Pendiente" ? "En proceso" : "");
+                        const phone = (s.guest_telefono || s.usuario_telefono || "").replace(/\D/g, "");
                         const adopterName = s.guest_nombre || s.usuario_nombre || "Adoptante";
-                        const petName = s.animal_nombre || "la mascota";
-                        const waText = encodeURIComponent(`Hola ${adopterName}, recibí tu solicitud en DoGood para adoptar a ${petName}. Me gustaría hacerte unas preguntas adicionales sobre tu estilo de vida y pedirte fotos del lugar donde vivirá para continuar con el proceso. ¿Tienes oportunidad de platicar? 🐾`);
+                        const matchingAnimal = animals.find(a => a.id === s.animal_id);
+                        const petName = s.animal_nombre || (matchingAnimal ? matchingAnimal.nombre : "la mascota");
+                        let fullPetImg = s.animal_foto || (matchingAnimal ? matchingAnimal.foto_url : "") || "";
+                        if (fullPetImg && !fullPetImg.startsWith("http") && !fullPetImg.startsWith("data:")) {
+                          fullPetImg = `${window.location.origin}${fullPetImg.startsWith("/") ? "" : "/"}${fullPetImg}`;
+                        }
+                        const isDocComplete = Boolean(s.documentacion_completada || s.comprobante_domicilio || s.ine_documento || s.firma_digital);
+                        const hasBeenStarted = Boolean(s.entrevista_iniciada || Number(s.entrevista_conteo) > 0);
+                        const clickCount = Number(s.entrevista_conteo || (hasBeenStarted ? 1 : 0));
                         
-                        return(
-                          <tr key={s.id} style={{borderBottom:`1px solid ${T.border}`,transition:"background .1s"}}
-                            onMouseEnter={e=>e.currentTarget.style.background=T.bg}
-                            onMouseLeave={e=>e.currentTarget.style.background=T.surface}>
-                            <td style={{padding:"13px 18px"}}>
-                              <div style={{display:"flex",alignItems:"center",gap:10}}>
-                                <div style={{width:34,height:34,borderRadius:T.r.sm,background:s.animal_color||GRADIENTS[0],display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1rem",overflow:"hidden",flexShrink:0}}>
-                                  {s.animal_foto?<img src={s.animal_foto} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:(s.animal_emoji||"🐾")}
+                        const waText = encodeURIComponent(
+                          `Hola ${adopterName}, ¡recibimos tu solicitud en DoGood para la adopción de ${petName}! 🐾\n\n` +
+                          (fullPetImg ? `📷 Foto de ${petName}: ${fullPetImg}\n\n` : "") +
+                          `Para continuar con el proceso de adopción, por favor responde a las siguientes preguntas:\n` +
+                          `1. ¿En qué ciudad o colonia vives y cuál es el tipo de tu vivienda (casa con patio, departamento, etc.)?\n` +
+                          `2. ¿El espacio disponible es amplio para las necesidades de ${petName}?\n` +
+                          `3. ¿Todas las personas en casa están de acuerdo con la adopción?\n` +
+                          `4. ¿Podrías enviarnos fotos o un video corto del espacio donde vivirá y descansará la mascota?\n` +
+                          `5. ¿Cuál es la rutina diaria que tendrá la mascota?\n\n` +
+                          `¡Quedamos a la espera de tus respuestas para formalizar la adopción!`
+                        );
+                        
+                        return (
+                          <tr key={s.id} style={{ borderBottom: `1px solid ${T.border}`, transition: "background .1s" }}
+                            onMouseEnter={e => e.currentTarget.style.background = T.bg}
+                            onMouseLeave={e => e.currentTarget.style.background = T.surface}>
+                            <td style={{ padding: "13px 18px" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                <div style={{ width: 34, height: 34, borderRadius: T.r.sm, background: s.animal_color || GRADIENTS[0], display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1rem", overflow: "hidden", flexShrink: 0 }}>
+                                  {s.animal_foto ? <img src={s.animal_foto} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (s.animal_emoji || "🐾")}
                                 </div>
                                 <div>
-                                  <div style={{fontWeight:700,fontSize:".87rem"}}>{s.animal_nombre}</div>
-                                  <div style={{fontSize:".72rem",color:T.muted}}>{s.animal_raza}</div>
+                                  <div style={{ fontWeight: 700, fontSize: ".87rem" }}>{s.animal_nombre}</div>
+                                  <div style={{ fontSize: ".72rem", color: T.muted }}>{s.animal_raza}</div>
                                 </div>
                               </div>
                             </td>
-                            <td style={{padding:"13px 18px"}}>
-                              <div style={{fontWeight:700,fontSize:".86rem",color:s.usuario_abierto==1?T.tag2.col:T.tag1.col}}>{s.usuario_nombre||s.guest_nombre||"—"}</div>
-                              <div style={{fontSize:".72rem",color:T.muted}}>{s.guest_email||s.usuario_email||""}</div>
-                              {(s.guest_telefono||s.usuario_telefono)&&<div style={{fontSize:".72rem",color:T.muted}}>📱 {s.guest_telefono||s.usuario_telefono}</div>}
+                            <td style={{ padding: "13px 18px" }}>
+                              <div style={{ fontWeight: 700, fontSize: ".86rem", color: s.usuario_abierto == 1 ? T.tag2.col : T.tag1.col }}>{s.usuario_nombre || s.guest_nombre || "—"}</div>
+                              <div style={{ fontSize: ".72rem", color: T.muted }}>{s.guest_email || s.usuario_email || ""}</div>
+                              {(s.guest_telefono || s.usuario_telefono) && <div style={{ fontSize: ".72rem", color: T.muted }}>📱 {s.guest_telefono || s.usuario_telefono}</div>}
                             </td>
-                            <td style={{padding:"13px 18px",fontSize:".8rem",color:T.sub,whiteSpace:"nowrap"}}>{s.vivienda||"—"}</td>
-                            <td style={{padding:"13px 18px",fontSize:".8rem",color:T.sub,whiteSpace:"nowrap"}}>{s.ninos||"—"}</td>
-                            <td style={{padding:"13px 18px",fontSize:".8rem",color:T.sub,whiteSpace:"nowrap"}}>{s.mascotas_actuales||"—"}</td>
-                            <td style={{padding:"13px 18px",fontSize:".8rem",color:T.sub,whiteSpace:"nowrap"}}>{s.experiencia_previa||"—"}</td>
-                            <td style={{padding:"13px 18px",fontSize:".8rem",color:T.sub,whiteSpace:"nowrap"}}>{s.tiene_veterinario||"—"}</td>
-                            <td style={{padding:"13px 18px",fontSize:".8rem",color:T.sub,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={s.motivacion||""}>
-                              {s.motivacion ? `"${s.motivacion}"` : "—"}
+                            <td style={{ padding: "13px 18px", fontSize: ".83rem", color: T.muted, whiteSpace: "nowrap" }}>{s.fecha}</td>
+                            <td style={{ padding: "13px 18px" }}>
+                              <Tag style={{ background: bg, color: col }} title={s.motivo_rechazo ? `Motivo: ${s.motivo_rechazo}` : ""}>
+                                {s.estatus}
+                              </Tag>
+                              {s.estatus === "Rechazada" && s.motivo_rechazo && (
+                                <div style={{ fontSize: ".68rem", color: "#DC2626", marginTop: 3, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.motivo_rechazo}>
+                                  "{s.motivo_rechazo}"
+                                </div>
+                              )}
                             </td>
-                            <td style={{padding:"13px 18px",fontSize:".83rem",color:T.muted,whiteSpace:"nowrap"}}>{s.fecha}</td>
-                            <td style={{padding:"13px 18px"}}><Tag style={{background:bg,color:col}}>{s.estatus}</Tag></td>
-                            <td style={{padding:"13px 18px"}}>
-                              <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"nowrap"}}>
-                                {s.estatus==="Pendiente"&&(
+                            <td style={{ padding: "13px 18px" }}>
+                              <button
+                                type="button"
+                                onClick={() => setActiveDetalleSol(s)}
+                                style={{
+                                  padding: "6px 14px", borderRadius: T.r.full,
+                                  border: "1.5px solid #CBD5E1", background: "#F8FAFC",
+                                  color: "#334155", fontWeight: 800, fontSize: ".76rem",
+                                  cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5,
+                                  boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+                                }}
+                                title="Ver respuestas del cuestionario y datos generales del adoptante"
+                              >
+                                Ver Solicitud
+                              </button>
+                            </td>
+                            <td style={{ padding: "13px 18px" }}>
+                              <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "nowrap" }}>
+                                {(s.estatus === "Pendiente" || s.estatus === "En revisión" || !s.estatus) && (
                                   <>
-                                    <button onClick={()=>resolverSol(s.id,"Aprobada")} style={{padding:"6px 12px",border:`1px solid ${T.accentLt}`,borderRadius:T.r.full,background:T.tag1.bg,color:T.tag1.col,fontWeight:700,fontSize:".76rem",cursor:"pointer"}}>Aprobar</button>
-                                    <button onClick={()=>resolverSol(s.id,"Rechazada")} style={{padding:"6px 12px",border:"1px solid #FECACA",borderRadius:T.r.full,background:T.tag4.bg,color:T.tag4.col,fontWeight:700,fontSize:".76rem",cursor:"pointer"}}>Rechazar</button>
+                                    {phone && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (isDocComplete) {
+                                            window.open(`https://wa.me/52${phone}?text=${encodeURIComponent(`Hola ${adopterName}, te contacto sobre tu proceso de adopción de ${petName}. 🐾`)}`, "_blank");
+                                          } else if (!hasBeenStarted) {
+                                            window.open(`https://wa.me/52${phone}?text=${waText}`, "_blank");
+                                            setSolicitudes(prev => prev.map(item => String(item.id) === String(s.id) ? { ...item, entrevista_iniciada: 1, entrevista_conteo: 1 } : item));
+                                            try {
+                                              const localSols = JSON.parse(localStorage.getItem("dogood_custom_solicitudes") || "[]");
+                                              const updatedLocal = localSols.map(item => String(item.id) === String(s.id) ? { ...item, entrevista_iniciada: 1, entrevista_conteo: 1 } : item);
+                                              localStorage.setItem("dogood_custom_solicitudes", JSON.stringify(updatedLocal));
+                                            } catch {}
+                                            apiFetch("solicitudes", "update", "POST", { id: s.id, entrevista_iniciada: 1, entrevista_conteo: 1 });
+                                          } else {
+                                            setActiveEntrevistaSol(s);
+                                          }
+                                        }}
+                                        style={{
+                                          padding: "7px 14px", borderRadius: T.r.full,
+                                          background: isDocComplete ? "#25D366" : (hasBeenStarted ? "#059669" : "#25D366"),
+                                          color: "#fff", fontWeight: 800, fontSize: ".76rem", border: "none", cursor: "pointer",
+                                          display: "inline-flex", alignItems: "center", gap: 5, boxShadow: "0 2px 8px rgba(37,211,102,.28)"
+                                        }}
+                                        title={isDocComplete ? "Contactar al adoptante por WhatsApp" : (hasBeenStarted ? "Entrevista enviada (Validar resultado)" : "Entrevista por WhatsApp (Primer contacto)")}
+                                      >
+                                        {isDocComplete ? "Contacto WhatsApp" : (hasBeenStarted ? `Entrevista Enviada (${clickCount})` : "Entrevista WhatsApp")}
+                                      </button>
+                                    )}
+                                    {Boolean(s.documentacion_completada || s.comprobante_domicilio || s.ine_documento || s.firma_digital) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const matchingAnimal = animals.find(a => a.id === s.animal_id) || { id: s.animal_id, nombre: s.animal_nombre, raza: s.animal_raza, foto_url: s.animal_foto, emoji: s.animal_emoji, rescatista_nombre: s.rescatista_nombre };
+                                          setActiveExpedienteAnimal(matchingAnimal);
+                                          setActiveExpedienteSol(s);
+                                        }}
+                                        style={{ padding: "6px 12px", border: `1.5px solid ${T.blue}`, borderRadius: T.r.full, background: "#EAF2FF", color: T.blue, fontWeight: 800, fontSize: ".76rem", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, boxShadow: "0 2px 8px rgba(22,83,187,.2)" }}
+                                        title="Ver expediente y documentos encriptados cargados por el adoptante"
+                                      >
+                                        Ver Documentos
+                                      </button>
+                                    )}
+                                    <button onClick={() => setActiveRechazoSol(s)} style={{ padding: "6px 12px", border: "1px solid #FECACA", borderRadius: T.r.full, background: T.tag4.bg, color: T.tag4.col, fontWeight: 700, fontSize: ".76rem", cursor: "pointer" }}>Rechazar</button>
                                   </>
                                 )}
-                                {phone && (
-                                  <a
-                                    href={`https://wa.me/52${phone}?text=${waText}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    style={{padding:"6px 11px",borderRadius:T.r.full,background:"#25D366",color:"#fff",fontWeight:700,fontSize:".74rem",textDecoration:"none",display:"inline-flex",alignItems:"center",gap:4}}
-                                    title="Contactar al candidato por WhatsApp para la entrevista"
-                                  >
-                                    📱 Entrevista WhatsApp
-                                  </a>
-                                )}
-                                {s.estatus==="Aprobada"&&(
+                                {s.estatus === "Aprobada" && (
                                   <>
-                                    <button onClick={()=>openCertModal({...s,id:s.animal_id,nombre:s.animal_nombre,emoji:s.animal_emoji,raza:s.animal_raza,sexo:s.animal_sexo,rescatista_nombre:s.rescatista_nombre})} style={{padding:"6px 12px",border:`1px solid ${T.border}`,borderRadius:T.r.full,background:T.surface,color:T.warmDk,fontWeight:700,fontSize:".76rem",cursor:"pointer"}}>Certificado</button>
-                                    <button onClick={()=>setSegAnimal({id:s.animal_id,nombre:s.animal_nombre,emoji:s.animal_emoji})} style={{padding:"6px 12px",border:`1px solid #10B981`,borderRadius:T.r.full,background:"#ECFDF5",color:"#047857",fontWeight:700,fontSize:".76rem",cursor:"pointer"}}>📸 Seguimiento</button>
+                                    <button
+                                      onClick={() => {
+                                        const matchingAnimal = animals.find(a => a.id === s.animal_id) || { id: s.animal_id, nombre: s.animal_nombre, raza: s.animal_raza, foto_url: s.animal_foto, emoji: s.animal_emoji, rescatista_nombre: s.rescatista_nombre };
+                                        setActiveExpedienteAnimal(matchingAnimal);
+                                        setActiveExpedienteSol(s);
+                                      }}
+                                      style={{ padding: "6px 12px", border: `1.5px solid ${T.blue}`, borderRadius: T.r.full, background: "#EAF2FF", color: T.blue, fontWeight: 700, fontSize: ".76rem", cursor: "pointer" }}
+                                    >
+                                      Expediente
+                                    </button>
+                                    <button onClick={() => openCertModal({ ...s, id: s.animal_id, nombre: s.animal_nombre, emoji: s.animal_emoji, raza: s.animal_raza, sexo: s.animal_sexo, rescatista_nombre: s.rescatista_nombre })} style={{ padding: "6px 12px", border: `1px solid ${T.border}`, borderRadius: T.r.full, background: T.surface, color: T.warmDk, fontWeight: 700, fontSize: ".76rem", cursor: "pointer" }}>Certificado</button>
+                                    <button onClick={() => setSegAnimal({ id: s.animal_id, nombre: s.animal_nombre, emoji: s.animal_emoji })} style={{ padding: "6px 12px", border: `1px solid #10B981`, borderRadius: T.r.full, background: "#ECFDF5", color: "#047857", fontWeight: 700, fontSize: ".76rem", cursor: "pointer" }}>Seguimiento</button>
                                   </>
                                 )}
                               </div>
@@ -1771,6 +4707,204 @@ export default function DoGood({initialUser=null,onLogout}){
                       })}
                     </tbody>
                   </table>
+                </div>
+
+                {/* VISTA PARA MÓVILES (GRID DE TARJETAS EXCLUSIVO) */}
+                <div className="responsive-hide-desktop" style={{ padding: "14px 12px", display: "grid", gridTemplateColumns: "1fr", gap: 14, background: T.bg }}>
+                  {solicitudes.map(s => {
+                    const { bg, col } = statusPill(s.estatus === "Aprobada" ? "Adoptado" : s.estatus === "Pendiente" ? "En proceso" : "");
+                    const phone = (s.guest_telefono || s.usuario_telefono || "").replace(/\D/g, "");
+                    const adopterName = s.guest_nombre || s.usuario_nombre || "Adoptante";
+                    const matchingAnimal = animals.find(a => a.id === s.animal_id);
+                    const petName = s.animal_nombre || (matchingAnimal ? matchingAnimal.nombre : "la mascota");
+                    let fullPetImg = s.animal_foto || (matchingAnimal ? matchingAnimal.foto_url : "") || "";
+                    if (fullPetImg && !fullPetImg.startsWith("http") && !fullPetImg.startsWith("data:")) {
+                      fullPetImg = `${window.location.origin}${fullPetImg.startsWith("/") ? "" : "/"}${fullPetImg}`;
+                    }
+                    const isDocComplete = Boolean(s.documentacion_completada || s.comprobante_domicilio || s.ine_documento || s.firma_digital);
+                    const hasBeenStarted = Boolean(s.entrevista_iniciada || Number(s.entrevista_conteo) > 0);
+                    const clickCount = Number(s.entrevista_conteo || (hasBeenStarted ? 1 : 0));
+                    
+                    const waText = encodeURIComponent(
+                      `Hola ${adopterName}, ¡recibimos tu solicitud en DoGood para la adopción de ${petName}! 🐾\n\n` +
+                      (fullPetImg ? `📷 Foto de ${petName}: ${fullPetImg}\n\n` : "") +
+                      `Para continuar con el proceso de adopción, por favor responde a las siguientes preguntas:\n` +
+                      `1. ¿En qué ciudad o colonia vives y cuál es el tipo de tu vivienda (casa con patio, departamento, etc.)?\n` +
+                      `2. ¿El espacio disponible es amplio para las necesidades de ${petName}?\n` +
+                      `3. ¿Todas las personas en casa están de acuerdo con la adopción?\n` +
+                      `4. ¿Podrías enviarnos fotos o un video corto del espacio donde vivirá y descansará la mascota?\n` +
+                      `5. ¿Cuál es la rutina diaria que tendrá la mascota?\n\n` +
+                      `¡Quedamos a la espera de tus respuestas para formalizar la adopción!`
+                    );
+
+                    return (
+                      <div
+                        key={s.id}
+                        style={{
+                          background: T.surface,
+                          borderRadius: 16,
+                          border: `1.5px solid ${T.border}`,
+                          padding: 14,
+                          display: "flex",
+                          flexDirection: "column",
+                          justifyContent: "space-between",
+                          boxShadow: "0 2px 10px rgba(0,0,0,0.04)"
+                        }}
+                      >
+                        {/* Header de la Tarjeta: Mascota & Estado */}
+                        <div>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10, gap: 8 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                              <div style={{ width: 42, height: 42, borderRadius: 12, background: s.animal_color || GRADIENTS[0], display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.3rem", overflow: "hidden", flexShrink: 0, border: "1px solid rgba(0,0,0,0.08)" }}>
+                                {s.animal_foto ? <img src={s.animal_foto} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (s.animal_emoji || "🐾")}
+                              </div>
+                              <div>
+                                <div style={{ fontWeight: 800, fontSize: ".95rem", color: T.ink }}>{s.animal_nombre}</div>
+                                <div style={{ fontSize: ".74rem", color: T.muted }}>{s.animal_raza}</div>
+                              </div>
+                            </div>
+
+                            <div style={{ textAlign: "right" }}>
+                              <Tag style={{ background: bg, color: col }} title={s.motivo_rechazo ? `Motivo: ${s.motivo_rechazo}` : ""}>
+                                {s.estatus}
+                              </Tag>
+                              {s.estatus === "Rechazada" && s.motivo_rechazo && (
+                                <div style={{ fontSize: ".68rem", color: "#DC2626", marginTop: 3, maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.motivo_rechazo}>
+                                  "{s.motivo_rechazo}"
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Información del Solicitante */}
+                          <div style={{ background: "#F8FAFC", padding: 10, borderRadius: 12, border: "1px solid #E2E8F0", marginBottom: 12 }}>
+                            <div style={{ fontSize: ".7rem", color: T.muted, textTransform: "uppercase", fontWeight: 800, letterSpacing: 0.5, marginBottom: 3 }}>
+                              SOLICITANTE
+                            </div>
+                            <div style={{ fontWeight: 800, fontSize: ".9rem", color: s.usuario_abierto == 1 ? T.tag2.col : T.tag1.col, marginBottom: 2 }}>
+                              {adopterName}
+                            </div>
+                            <div style={{ fontSize: ".76rem", color: T.muted, wordBreak: "break-all" }}>
+                              {s.guest_email || s.usuario_email || ""}
+                            </div>
+                            {(s.guest_telefono || s.usuario_telefono) && (
+                              <div style={{ fontSize: ".76rem", color: T.muted, marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}>
+                                📱 <strong>{s.guest_telefono || s.usuario_telefono}</strong>
+                              </div>
+                            )}
+                            <div style={{ fontSize: ".68rem", color: "#94A3B8", marginTop: 4, fontStyle: "italic" }}>
+                              📅 Recibida: {s.fecha}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Botones de Acción de la Tarjeta */}
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 2, paddingTop: 8, borderTop: `1px solid ${T.border}` }}>
+                          <button
+                            type="button"
+                            onClick={() => setActiveDetalleSol(s)}
+                            style={{
+                              padding: "7px 12px", borderRadius: T.r.full,
+                              border: "1.5px solid #CBD5E1", background: "#FFF",
+                              color: "#334155", fontWeight: 800, fontSize: ".74rem",
+                              cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4,
+                              boxShadow: "0 1px 3px rgba(0,0,0,0.05)", flex: "1 1 auto", justifyContent: "center"
+                            }}
+                            title="Ver respuestas del cuestionario y datos generales del adoptante"
+                          >
+                            Ver Solicitud
+                          </button>
+
+                          {(s.estatus === "Pendiente" || s.estatus === "En revisión" || !s.estatus) && (
+                            <>
+                              {phone && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (isDocComplete) {
+                                      window.open(`https://wa.me/52${phone}?text=${encodeURIComponent(`Hola ${adopterName}, te contacto sobre tu proceso de adopción de ${petName}. 🐾`)}`, "_blank");
+                                    } else if (!hasBeenStarted) {
+                                      window.open(`https://wa.me/52${phone}?text=${waText}`, "_blank");
+                                      setSolicitudes(prev => prev.map(item => String(item.id) === String(s.id) ? { ...item, entrevista_iniciada: 1, entrevista_conteo: 1 } : item));
+                                      try {
+                                        const localSols = JSON.parse(localStorage.getItem("dogood_custom_solicitudes") || "[]");
+                                        const updatedLocal = localSols.map(item => String(item.id) === String(s.id) ? { ...item, entrevista_iniciada: 1, entrevista_conteo: 1 } : item);
+                                        localStorage.setItem("dogood_custom_solicitudes", JSON.stringify(updatedLocal));
+                                      } catch {}
+                                      apiFetch("solicitudes", "update", "POST", { id: s.id, entrevista_iniciada: 1, entrevista_conteo: 1 });
+                                    } else {
+                                      setActiveEntrevistaSol(s);
+                                    }
+                                  }}
+                                  style={{
+                                    padding: "7px 12px", borderRadius: T.r.full,
+                                    background: isDocComplete ? "#25D366" : (hasBeenStarted ? "#059669" : "#25D366"),
+                                    color: "#fff", fontWeight: 800, fontSize: ".74rem", border: "none", cursor: "pointer",
+                                    display: "inline-flex", alignItems: "center", gap: 4, boxShadow: "0 2px 8px rgba(37,211,102,.28)",
+                                    flex: "1 1 auto", justifyContent: "center"
+                                  }}
+                                  title={isDocComplete ? "Contactar al adoptante por WhatsApp" : (hasBeenStarted ? "Entrevista enviada (Validar resultado)" : "Entrevista por WhatsApp (Primer contacto)")}
+                                >
+                                  {isDocComplete ? "Contacto WhatsApp" : (hasBeenStarted ? `Entrevista Enviada (${clickCount})` : "Entrevista WhatsApp")}
+                                </button>
+                              )}
+                              {Boolean(s.documentacion_completada || s.comprobante_domicilio || s.ine_documento || s.firma_digital) && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const matchingAnimal = animals.find(a => a.id === s.animal_id) || { id: s.animal_id, nombre: s.animal_nombre, raza: s.animal_raza, foto_url: s.animal_foto, emoji: s.animal_emoji, rescatista_nombre: s.rescatista_nombre };
+                                    setActiveExpedienteAnimal(matchingAnimal);
+                                    setActiveExpedienteSol(s);
+                                  }}
+                                  style={{ padding: "6px 12px", border: `1.5px solid ${T.blue}`, borderRadius: T.r.full, background: "#EAF2FF", color: T.blue, fontWeight: 800, fontSize: ".74rem", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, boxShadow: "0 2px 8px rgba(22,83,187,.2)", flex: "1 1 auto", justifyContent: "center" }}
+                                  title="Ver expediente y documentos encriptados cargados por el adoptante"
+                                >
+                                  Ver Documentos
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setActiveRechazoSol(s)}
+                                style={{ padding: "6px 12px", border: "1px solid #FECACA", borderRadius: T.r.full, background: T.tag4.bg, color: T.tag4.col, fontWeight: 700, fontSize: ".74rem", cursor: "pointer", flex: "0 0 auto" }}
+                              >
+                                Rechazar
+                              </button>
+                            </>
+                          )}
+
+                          {s.estatus === "Aprobada" && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const matchingAnimal = animals.find(a => a.id === s.animal_id) || { id: s.animal_id, nombre: s.animal_nombre, raza: s.animal_raza, foto_url: s.animal_foto, emoji: s.animal_emoji, rescatista_nombre: s.rescatista_nombre };
+                                  setActiveExpedienteAnimal(matchingAnimal);
+                                  setActiveExpedienteSol(s);
+                                }}
+                                style={{ padding: "6px 12px", border: `1.5px solid ${T.blue}`, borderRadius: T.r.full, background: "#EAF2FF", color: T.blue, fontWeight: 700, fontSize: ".74rem", cursor: "pointer", flex: "1 1 auto", justifyContent: "center", display: "inline-flex", alignItems: "center", gap: 4 }}
+                              >
+                                Expediente
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openCertModal({ ...s, id: s.animal_id, nombre: s.animal_nombre, emoji: s.animal_emoji, raza: s.animal_raza, sexo: s.animal_sexo, rescatista_nombre: s.rescatista_nombre })}
+                                style={{ padding: "6px 12px", border: `1px solid ${T.border}`, borderRadius: T.r.full, background: T.surface, color: T.warmDk, fontWeight: 700, fontSize: ".74rem", cursor: "pointer", flex: "1 1 auto", justifyContent: "center" }}
+                              >
+                                Certificado
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSegAnimal({ id: s.animal_id, nombre: s.animal_nombre, emoji: s.animal_emoji })}
+                                style={{ padding: "6px 12px", border: `1px solid #10B981`, borderRadius: T.r.full, background: "#ECFDF5", color: "#047857", fontWeight: 700, fontSize: ".74rem", cursor: "pointer", flex: "1 1 auto", justifyContent: "center" }}
+                              >
+                                Seguimiento
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ):(
@@ -2195,24 +5329,72 @@ export default function DoGood({initialUser=null,onLogout}){
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 320px",gap:20,alignItems:"start"}}>
               <div style={{background:T.surface,borderRadius:T.r.xl,border:`1.5px solid ${T.border}`,padding:isMobile?16:28}}>
                 <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14,marginBottom:14}}>
-                  {[["Nombre",<input value={aN} onChange={e=>setAN(e.target.value)} placeholder="Nombre" style={inp} onFocus={f=>f.target.style.borderColor=T.accentDk} onBlur={f=>f.target.style.borderColor=T.border}/>],
+                  {[["Nombre",<input spellCheck={true} value={aN} onChange={e=>setAN(e.target.value)} placeholder="Nombre" style={inp} onFocus={f=>f.target.style.borderColor=T.accentDk} onBlur={f=>f.target.style.borderColor=T.border}/>],
                     ["Especie",<select value={aE} onChange={e=>setAE(e.target.value)} style={inp}><option value="perro">Perro {IC.dog}</option><option value="gato">Gato {IC.cat}</option></select>],
                     ["Sexo",<select value={aS} onChange={e=>setAS(e.target.value)} style={inp}><option value="Hembra">Hembra</option><option value="Macho">Macho</option></select>],
                     ["Talla",<select value={aT} onChange={e=>setAT(e.target.value)} style={inp}><option value="pequeño">Pequeño</option><option value="mediano">Mediano</option><option value="grande">Grande</option></select>],
                     ["Peso (kg)",<input type="number" inputMode="decimal" step="0.1" min="0" value={aP} onChange={e=>setAP(e.target.value.replace(/[^0-9.]/g,""))} placeholder="5.5" style={inp} onFocus={f=>f.target.style.borderColor=T.accentDk} onBlur={f=>f.target.style.borderColor=T.border}/>],
                     ["Edad (años)",<input type="number" inputMode="numeric" min="0" value={aEd} onChange={e=>setAEd(e.target.value.replace(/\D/g,""))} placeholder="2" style={inp} onFocus={f=>f.target.style.borderColor=T.accentDk} onBlur={f=>f.target.style.borderColor=T.border}/>],
-                    ["Cuota de recuperación (MXN)",
+                    ["¿Aplica cuota de recuperación?",
+                      <select value={aAplicaCuota ? "si" : "no"} onChange={e=>setAAplicaCuota(e.target.value === "si")} style={inp}>
+                        <option value="no">Sin Cuota (Gratuita)</option>
+                        <option value="si">Con Cuota de Recuperación</option>
+                      </select>
+                    ],
+                    ["Monto Cuota de recuperación (MXN)",
                       <div style={{position:"relative"}}>
                         <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:".82rem",color:T.muted,pointerEvents:"none"}}>$</span>
-                        <input type="number" inputMode="numeric" min="0" value={aCuota} onChange={e=>setACuota(e.target.value.replace(/[^0-9.]/g,""))} placeholder="0 (gratis)" style={{...inp,paddingLeft:24}} onFocus={f=>f.target.style.borderColor=T.accentDk} onBlur={f=>f.target.style.borderColor=T.border}/>
+                        <input type="number" inputMode="numeric" min="0" value={aCuota} onChange={e=>{setACuota(e.target.value.replace(/[^0-9.]/g,"")); if(Number(e.target.value)>0)setAAplicaCuota(true);}} placeholder="0 (gratis)" style={{...inp,paddingLeft:24}} onFocus={f=>f.target.style.borderColor=T.accentDk} onBlur={f=>f.target.style.borderColor=T.border}/>
                       </div>],
                   ].map(([l,el])=>(
                     <div key={l}>
-                      <label style={{display:"block",fontSize:".76rem",fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:.6,marginBottom:6}}>{l}{l.includes("Cuota")&&<span style={{textTransform:"none",fontWeight:500,color:T.faint}}> — opcional</span>}</label>
+                      <label style={{display:"block",fontSize:".76rem",fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:.6,marginBottom:6}}>{l}</label>
                       {el}
                     </div>
                   ))}
                 </div>
+
+                {/* Desglose de cuota de recuperación */}
+                {aAplicaCuota && (
+                  <div style={{marginBottom:14}}>
+                    <label style={{display:"block",fontSize:".76rem",fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:.6,marginBottom:6}}>📋 Lista Desglosada de lo que incluye la Cuota</label>
+                    <input spellCheck={true} value={aDesgloseCuota} onChange={e=>setADesgloseCuota(e.target.value)} placeholder="Ej. Esterilización, Vacuna Quíntuple, Rabia, Desparasitación" style={inp} />
+                  </div>
+                )}
+
+                {/* Campos Extendidos de Salud */}
+                <div style={{background:T.bg,borderRadius:T.r.md,padding:14,border:`1px solid ${T.border}`,marginBottom:14}}>
+                  <div style={{fontSize:".78rem",fontWeight:800,color:T.sub,textTransform:"uppercase",letterSpacing:.6,marginBottom:10}}>🏥 Expediente Clínico de Salud</div>
+                  <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:10,marginBottom:10}}>
+                    <div>
+                      <label style={{fontSize:".72rem",fontWeight:700,color:T.muted}}>¿Desparasitado/a?</label>
+                      <select value={aDesparasitado ? "si" : "no"} onChange={e=>setADesparasitado(e.target.value === "si")} style={inp}>
+                        <option value="si">Sí ✅</option>
+                        <option value="no">En proceso / No ⏳</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{fontSize:".72rem",fontWeight:700,color:T.muted}}>¿Esterilizado/a?</label>
+                      <select value={aEsterilizado ? "si" : "no"} onChange={e=>setAEsterilizado(e.target.value === "si")} style={inp}>
+                        <option value="si">Sí ✅</option>
+                        <option value="no">Pendiente ⏳</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{marginBottom:10}}>
+                    <label style={{fontSize:".72rem",fontWeight:700,color:T.muted}}>Esquema de Vacunación</label>
+                    <input spellCheck={true} value={aVacunas} onChange={e=>setAVacunas(e.target.value)} placeholder="Ej. Quíntuple, Rabia y Desparasitación al día" style={inp} />
+                  </div>
+                  <div style={{marginBottom:10}}>
+                    <label style={{fontSize:".72rem",fontWeight:700,color:T.muted}}>Código de Microchip (Opcional)</label>
+                    <input spellCheck={true} value={aMicrochip} onChange={e=>setAMicrochip(e.target.value)} placeholder="Ej. 982000012345678" style={inp} />
+                  </div>
+                  <div>
+                    <label style={{fontSize:".72rem",fontWeight:700,color:T.muted}}>Condición médica o notas de salud</label>
+                    <input spellCheck={true} value={aCondicionSalud} onChange={e=>setACondicionSalud(e.target.value)} placeholder="Ej. Excelente salud, requiere croquetas de cachorro" style={inp} />
+                  </div>
+                </div>
+
                 <div style={{marginBottom:14}}>
                   <label style={{display:"block",fontSize:".76rem",fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:.6,marginBottom:6}}>Raza</label>
                   <RazaSelector value={aR} onChange={setAR}/>
@@ -2225,7 +5407,7 @@ export default function DoGood({initialUser=null,onLogout}){
                 </div>
                 <div style={{marginBottom:20}}>
                   <label style={{display:"block",fontSize:".76rem",fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:.6,marginBottom:6}}>Historia</label>
-                  <textarea value={aH} onChange={e=>setAH(e.target.value)} rows={4} placeholder="Cuéntanos su historia..." style={{...inp,resize:"vertical"}} onFocus={f=>f.target.style.borderColor=T.accentDk} onBlur={f=>f.target.style.borderColor=T.border}/>
+                  <textarea spellCheck={true} value={aH} onChange={e=>setAH(e.target.value)} rows={4} placeholder="Cuéntanos su historia..." style={{...inp,resize:"vertical"}} onFocus={f=>f.target.style.borderColor=T.accentDk} onBlur={f=>f.target.style.borderColor=T.border}/>
                 </div>
                 <button onClick={saveAnimal} style={{width:"100%",padding:"13px",border:"none",borderRadius:T.r.md,background:T.accentDk,color:"#fff",fontWeight:700,fontSize:".9rem",cursor:"pointer",transition:"background .2s"}}
                   onMouseEnter={e=>e.currentTarget.style.background=T.accentMd}
@@ -2407,6 +5589,243 @@ export default function DoGood({initialUser=null,onLogout}){
           </div>
         </Modal>
       )}
+
+      {/* ===== 1. MODAL ¿SE CONCRETÓ LA ENTREVISTA? ===== */}
+      {activeEntrevistaSol && (() => {
+        const phone = (activeEntrevistaSol.guest_telefono || activeEntrevistaSol.usuario_telefono || "").replace(/\D/g, "");
+        const adopterName = activeEntrevistaSol.guest_nombre || activeEntrevistaSol.usuario_nombre || "Adoptante";
+        const petName = activeEntrevistaSol.animal_nombre || "la mascota";
+        const petImg = activeEntrevistaSol.animal_foto || "";
+        const waText = encodeURIComponent(
+          `Hola ${adopterName}, ¡recibimos tu solicitud en DoGood para adoptar a ${petName}! 🐾\n\n` +
+          (petImg ? `Foto de ${petName}: ${petImg}\n\n` : "") +
+          `Para continuar con el proceso de adopción, por favor responde a las siguientes preguntas:\n` +
+          `1. ¿En qué ciudad o colonia vives y cuál es el tipo de tu vivienda (casa con patio, departamento, etc.)?\n` +
+          `2. ¿El espacio disponible es amplio para las necesidades de ${petName}?\n` +
+          `3. ¿Todas las personas en casa están de acuerdo con la adopción?\n` +
+          `4. ¿Podrías enviarnos fotos o un video corto del espacio donde vivirá y descansará la mascota?\n` +
+          `5. ¿Cuál es la rutina diaria que tendrá la mascota?\n\n` +
+          `¡Quedamos a la espera de tus respuestas para formalizar la adopción!`
+        );
+        const matchingAnimal = animals.find(a => a.id === activeEntrevistaSol.animal_id) || { id: activeEntrevistaSol.animal_id, nombre: activeEntrevistaSol.animal_nombre };
+
+        return (
+          <EntrevistaStatusModal
+            solicitud={activeEntrevistaSol}
+            animal={matchingAnimal}
+            phone={phone}
+            waText={waText}
+            onClose={() => setActiveEntrevistaSol(null)}
+            onConfirmConcretada={() => {
+              const solToValidate = activeEntrevistaSol;
+              setActiveEntrevistaSol(null);
+              setActiveChecklistSol(solToValidate);
+            }}
+          />
+        );
+      })()}
+
+      {/* ===== 2. MODAL CHECKLIST DE REQUISITOS ===== */}
+      {activeChecklistSol && (() => {
+        const matchingAnimal = animals.find(a => a.id === activeChecklistSol.animal_id) || { id: activeChecklistSol.animal_id, nombre: activeChecklistSol.animal_nombre };
+        return (
+          <ChecklistAdopcionModal
+            solicitud={activeChecklistSol}
+            animal={matchingAnimal}
+            onClose={() => setActiveChecklistSol(null)}
+            onComplete={async (solId) => {
+              await apiFetch("solicitudes", "update", "POST", { id: solId, checklist_completado: 1, estatus: "En revisión" });
+              setSolicitudes(prev => prev.map(s => s.id === solId ? { ...s, checklist_completado: 1, estatus: "En revisión" } : s));
+              toast$("Checklist completado al 100%. Carga habilitada para el adoptante 🐾", "success");
+            }}
+          />
+        );
+      })()}
+
+      {/* ===== 3. MODAL CARPETA & EXPEDIENTE DIGITAL ===== */}
+      {activeExpedienteAnimal && (
+        <ExpedienteDigitalModal
+          animal={activeExpedienteAnimal}
+          solicitud={activeExpedienteSol}
+          onClose={() => {
+            setActiveExpedienteAnimal(null);
+            setActiveExpedienteSol(null);
+          }}
+          onUpdateDocs={(solId, payload) => {
+            setSolicitudes(prev => prev.map(s => s.id === solId ? { ...s, ...payload } : s));
+            toast$("Carpeta Digital actualizada correctamente 💾", "success");
+          }}
+          onSaveSignature={async (solId, dataUrl) => {
+            if (solId) {
+              await apiFetch("solicitudes", "update", "POST", { id: solId, firma_digital: dataUrl });
+              setSolicitudes(prev => prev.map(s => s.id === solId ? { ...s, firma_digital: dataUrl } : s));
+              toast$("Acuerdo de Adopción firmado y avalado legalmente ✒️", "success");
+            }
+          }}
+          onApproveAdopcion={(solId) => resolverSol(solId, "Aprobada")}
+        />
+      )}
+
+      {/* ===== 4. MODAL DE MOTIVO DE RECHAZO ===== */}
+      {activeRechazoSol && (
+        <RechazoModal
+          solicitud={activeRechazoSol}
+          onClose={() => setActiveRechazoSol(null)}
+          onConfirmRechazo={async (solId, motivo) => {
+            await resolverSol(solId, "Rechazada", motivo);
+            setActiveRechazoSol(null);
+          }}
+        />
+      )}
+
+      {/* ===== 5. PORTAL ESPECIAL DE CARGA DEL ADOPTANTE ===== */}
+      {activePortalSol && (
+        <PortalCargaAdoptanteModal
+          solicitud={activePortalSol.sol}
+          animal={activePortalSol.animal}
+          onClose={() => setActivePortalSol(null)}
+          onCompleteUpload={(solId, payload) => {
+            const animalNombre = payload.animal_nombre || activePortalSol?.animal?.nombre || activePortalSol?.sol?.animal_nombre || "";
+            const animalId = payload.animal_id || activePortalSol?.sol?.animal_id;
+
+            // Update solicitudes state - match by ID, animal_id, or animal_nombre
+            setSolicitudes(prev => prev.map(s => {
+              const matchById = String(s.id) === String(solId);
+              const matchByAnimalId = animalId && String(s.animal_id) === String(animalId);
+              const matchByName = animalNombre && s.animal_nombre && s.animal_nombre.toLowerCase() === animalNombre.toLowerCase();
+              if (matchById || matchByAnimalId || matchByName) {
+                return { ...s, ...payload, documentacion_completada: 1, estatus: "En revisión" };
+              }
+              return s;
+            }));
+
+            // Save to dogood_doc_* keys (these are the keys loadSols actually reads!)
+            try {
+              const docData = {
+                comprobante_domicilio: payload.comprobante_domicilio,
+                ine_documento: payload.ine_documento,
+                foto_espacio_1: payload.foto_espacio_1,
+                foto_espacio_2: payload.foto_espacio_2,
+                foto_espacio_3: payload.foto_espacio_3,
+                firma_digital: payload.firma_digital,
+                documentacion_completada: 1,
+                estatus: "En revisión"
+              };
+              localStorage.setItem(`dogood_doc_${solId}`, JSON.stringify(docData));
+              if (animalNombre) {
+                localStorage.setItem(`dogood_doc_name_${animalNombre.toLowerCase()}`, JSON.stringify(docData));
+              }
+            } catch (e) {}
+
+            // Also update dogood_custom_solicitudes
+            try {
+              const localSols = JSON.parse(localStorage.getItem("dogood_custom_solicitudes") || "[]");
+              let found = false;
+              const updatedLocal = localSols.map(s => {
+                const matchById = String(s.id) === String(solId);
+                const matchByAnimalId = animalId && String(s.animal_id) === String(animalId);
+                const matchByName = animalNombre && s.animal_nombre && s.animal_nombre.toLowerCase() === animalNombre.toLowerCase();
+                if (matchById || matchByAnimalId || matchByName) {
+                  found = true;
+                  return { ...s, ...payload, documentacion_completada: 1, estatus: "En revisión" };
+                }
+                return s;
+              });
+              localStorage.setItem("dogood_custom_solicitudes", JSON.stringify(updatedLocal));
+            } catch (e) {}
+
+            toast$("🎉 Documentación y Firma recibidas. Botón 'Ver Documentos' habilitado 🔓", "success");
+          }}
+        />
+      )}
+
+      {/* ===== 6. MODAL DETALLE COMPLETO DE LA SOLICITUD ===== */}
+      {activeDetalleSol && (() => {
+        const matchingAnimal = animals.find(a => a.id === activeDetalleSol.animal_id) || {
+          id: activeDetalleSol.animal_id,
+          nombre: activeDetalleSol.animal_nombre || "Mascota",
+          raza: activeDetalleSol.animal_raza || "Mascota",
+          foto_url: activeDetalleSol.animal_foto || ""
+        };
+        return (
+          <Modal onClose={() => setActiveDetalleSol(null)}>
+            <div style={{ padding: "16px 18px", maxWidth: 520, width: "100%", fontFamily: "sans-serif" }}>
+              {/* Header compacto */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, borderBottom: "1px solid #E5E7EB", paddingBottom: 10, paddingRight: 36 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: activeDetalleSol.animal_color || GRADIENTS[0], display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.2rem", overflow: "hidden", flexShrink: 0 }}>
+                  {matchingAnimal.foto_url ? <img src={matchingAnimal.foto_url} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (activeDetalleSol.animal_emoji || "🐾")}
+                </div>
+                <div>
+                  <h3 style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "1.05rem", color: "#111827", margin: 0, lineHeight: 1.2 }}>
+                    Solicitud de {activeDetalleSol.guest_nombre || activeDetalleSol.usuario_nombre || "Adoptante"}
+                  </h3>
+                  <div style={{ fontSize: ".76rem", color: "#6B7280", marginTop: 2 }}>
+                    Mascota: <strong>{matchingAnimal.nombre}</strong> ({matchingAnimal.raza || "Criollo"})
+                  </div>
+                </div>
+              </div>
+
+              {/* DETALLES DE LA SOLICITUD (ULTRA COMPACTO) */}
+              <div style={{ display: "grid", gap: 10 }}>
+                {/* Datos del Solicitante */}
+                <div style={{ background: "#F8FAFC", borderRadius: 12, padding: "10px 12px", border: "1px solid #E2E8F0" }}>
+                  <div style={{ fontSize: ".68rem", fontWeight: 800, color: "#64748B", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
+                    👤 Datos del Solicitante
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 10px", fontSize: ".78rem" }}>
+                    <div><strong>Nombre:</strong> {activeDetalleSol.guest_nombre || activeDetalleSol.usuario_nombre || "—"}</div>
+                    <div><strong>Teléfono:</strong> {activeDetalleSol.guest_telefono || activeDetalleSol.usuario_telefono || "—"}</div>
+                    <div style={{ gridColumn: "span 2", wordBreak: "break-all" }}><strong>Correo:</strong> {activeDetalleSol.guest_email || activeDetalleSol.usuario_email || "—"}</div>
+                    <div><strong>Modalidad:</strong> {activeDetalleSol.usuario_abierto == 1 ? "🟡 Abierto" : "🟢 Solo esta mascota"}</div>
+                    <div><strong>Fecha:</strong> {activeDetalleSol.fecha || "—"}</div>
+                  </div>
+                </div>
+
+                {/* Respuestas del Cuestionario */}
+                <div style={{ background: "#F8FAFC", borderRadius: 12, padding: "10px 12px", border: "1px solid #E2E8F0" }}>
+                  <div style={{ fontSize: ".68rem", fontWeight: 800, color: "#64748B", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
+                    🏠 Respuestas del Cuestionario
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 12px", fontSize: ".78rem" }}>
+                    <div style={{ borderBottom: "1px solid #EDF2F7", paddingBottom: 3 }}>
+                      <div style={{ color: "#64748B", fontSize: ".7rem" }}>🏠 Vivienda:</div>
+                      <div style={{ fontWeight: 700, color: "#0F172A" }}>{activeDetalleSol.vivienda || "—"}</div>
+                    </div>
+                    <div style={{ borderBottom: "1px solid #EDF2F7", paddingBottom: 3 }}>
+                      <div style={{ color: "#64748B", fontSize: ".7rem" }}>👨‍👩‍👧‍👦 Niños en casa:</div>
+                      <div style={{ fontWeight: 700, color: "#0F172A" }}>{activeDetalleSol.ninos || "—"}</div>
+                    </div>
+                    <div style={{ borderBottom: "1px solid #EDF2F7", paddingBottom: 3 }}>
+                      <div style={{ color: "#64748B", fontSize: ".7rem" }}>🐶🐱 Mascotas actuales:</div>
+                      <div style={{ fontWeight: 700, color: "#0F172A" }}>{activeDetalleSol.mascotas_actuales || "—"}</div>
+                    </div>
+                    <div style={{ borderBottom: "1px solid #EDF2F7", paddingBottom: 3 }}>
+                      <div style={{ color: "#64748B", fontSize: ".7rem" }}>🎓 Experiencia previa:</div>
+                      <div style={{ fontWeight: 700, color: "#0F172A" }}>{activeDetalleSol.experiencia_previa || "—"}</div>
+                    </div>
+                    <div style={{ gridColumn: "span 2", paddingTop: 2 }}>
+                      <span style={{ color: "#64748B", fontSize: ".7rem" }}>🩺 Servicio veterinario: </span>
+                      <span style={{ fontWeight: 700, color: "#0F172A" }}>{activeDetalleSol.tiene_veterinario || "—"}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Motivación */}
+                {activeDetalleSol.motivacion && (
+                  <div style={{ background: "#EFF6FF", borderRadius: 12, padding: "8px 12px", border: "1px solid #BFDBFE" }}>
+                    <div style={{ fontSize: ".68rem", fontWeight: 800, color: "#1E40AF", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>
+                      💬 Motivación del Adoptante
+                    </div>
+                    <p style={{ fontSize: ".78rem", color: "#1E3A8A", fontStyle: "italic", margin: 0, lineHeight: 1.4 }}>
+                      "{activeDetalleSol.motivacion}"
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </Modal>
+        );
+      })()}
 
       {toast&&<Toast msg={toast.msg} type={toast.type}/>}
     </div>

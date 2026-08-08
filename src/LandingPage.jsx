@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import FormularioWizard from "./FormularioWizard.jsx";
 
-const LOCAL_API_BASE = "http://localhost:8000/api";
-const REMOTE_API_BASE = (import.meta.env.VITE_API_URL || "https://teotek.com.mx/api").replace(/\/+$/, "");
-const apiUrl = (path) => `${LOCAL_API_BASE}/${path.replace(/^\/+/, "")}`;
+const API_BASE = (import.meta.env.VITE_API_URL || "http://localhost/dogood-v4/api").replace(/\/+$/, "");
+const apiUrl = (path) => `${API_BASE}/${path.replace(/^\/+/, "")}`;
 const LANDING_NOW = Date.now();
 
 const C = {
@@ -476,8 +475,9 @@ function Navbar({onLoginClick,onDemoClick,onOpenSection}){
   },[]);
   const links=[
     ["Cómo funciona","#como-funciona"],
+    ["📋 Inventario","#catalogo-inventario"],
     ["Servicios","#servicios"],
-    ["Adoptar","#adoptar"],
+    ["Adoptar","#catalogo-inventario"],
     ["Guías","#recursos"],
     ["Preguntas","#faq"]
   ];
@@ -548,10 +548,13 @@ function Navbar({onLoginClick,onDemoClick,onOpenSection}){
                 <div style={{width:"100%",display:"flex",flexDirection:"column",gap:2,padding:"6px 0 10px",borderTop:`1px solid ${C.beigedk}`,marginTop:8}}>
                   {links.map(([l,h])=>(
                     <a
-                      key={h}
+                      key={l}
                       href={h}
                       onClick={(e)=>{
-                        if(h==="#como-funciona"&&onOpenSection){e.preventDefault();onOpenSection("como-funciona");}
+                        if((h==="#como-funciona"||h==="#catalogo-inventario")&&onOpenSection){
+                          e.preventDefault();
+                          onOpenSection(h.replace("#",""));
+                        }
                         setMenuOpen(false);
                       }}
                       style={{padding:"12px 14px",borderRadius:12,fontWeight:700,fontSize:".95rem",color:"#5E5E5E",textDecoration:"none"}}
@@ -577,13 +580,13 @@ function Navbar({onLoginClick,onDemoClick,onOpenSection}){
               <div style={{display:"flex",alignItems:"center",gap:4}}>
                 {links.map(([l,h])=>{
                   const handleClick = (e) => {
-                    if (h === "#como-funciona" && onOpenSection) {
+                    if ((h === "#como-funciona" || h === "#catalogo-inventario") && onOpenSection) {
                       e.preventDefault();
-                      onOpenSection("como-funciona");
+                      onOpenSection(h.replace("#", ""));
                     }
                   };
                   return (
-                    <a key={h} href={h} onClick={handleClick} style={{padding:"8px 14px",borderRadius:50,fontWeight:700,fontSize:".88rem",color:"#5E5E5E",textDecoration:"none",transition:"all .2s"}}
+                    <a key={l} href={h} onClick={handleClick} style={{padding:"8px 14px",borderRadius:50,fontWeight:700,fontSize:".88rem",color:"#5E5E5E",textDecoration:"none",transition:"all .2s"}}
                       onMouseEnter={e=>{e.currentTarget.style.background="#EFE7DC";e.currentTarget.style.color=C.cafe}}
                       onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color="#5E5E5E";}}>
                       {l}
@@ -617,7 +620,7 @@ function Navbar({onLoginClick,onDemoClick,onOpenSection}){
   );
 }
 
-function Hero({ onLoginClick, onDemoClick, onConocenosClick, onHelpClick }) {
+function Hero({ onLoginClick, onDemoClick, onConocenosClick, onHelpClick, onGoToCatalog }) {
   const pets = [
     "https://images.unsplash.com/photo-1552053831-71594a27632d?auto=format&fit=crop&w=400&q=80",
     "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=400&q=80",
@@ -712,7 +715,8 @@ function Hero({ onLoginClick, onDemoClick, onConocenosClick, onHelpClick }) {
           {/* Card 1: Quiero adoptar */}
           <button
             onClick={() => {
-              document.getElementById("adoptar")?.scrollIntoView({ behavior: "smooth", block: "start" });
+              if (onGoToCatalog) onGoToCatalog();
+              else window.location.href = "/adoptar";
             }}
             className="paw-btn"
             style={{
@@ -3326,7 +3330,9 @@ function LoginModal({onClose,onLogin,onNotify}){
   );
 }
 
-export default function LandingPage({onLogin}){
+
+
+export default function LandingPage({onLogin, onGoToCatalog}){
   const [splashDone,setSplashDone]=useState(false);
   const [showLogin,setShowLogin]=useState(false);
   const [fontScale,setFontScale]=useState(100);
@@ -3395,7 +3401,6 @@ export default function LandingPage({onLogin}){
   const runGuidedDemo=()=>{
       const steps=[
       ["como-funciona","Proceso de adopcion"],
-      ["adoptar","Collage de peluditos"],
       ["servicios","Servicios recomendados"],
       ["faq","Preguntas frecuentes"],
     ];
@@ -3446,16 +3451,17 @@ export default function LandingPage({onLogin}){
                   setTimeout(() => {
                     document.getElementById("conocenos")?.scrollIntoView({ behavior: "smooth", block: "start" });
                   }, 120);
+                } else if (id === "catalogo-inventario" || id === "adoptar" || id === "catalogo") {
+                  if (onGoToCatalog) onGoToCatalog();
+                  else window.location.href = "/adoptar";
                 }
               }}
             />
-            <Hero onLoginClick={() => setShowLogin(true)} onDemoClick={toggleProcessSection} onConocenosClick={toggleConocenosSection} onHelpClick={toggleHelpSection} />
+            <Hero onLoginClick={() => setShowLogin(true)} onDemoClick={toggleProcessSection} onConocenosClick={toggleConocenosSection} onHelpClick={toggleHelpSection} onGoToCatalog={onGoToCatalog} />
 
             <LiveMetricsSection onLoginClick={()=>setShowLogin(true)} onOpenProfile={openAnimalProfile}/>
             <StoriesSection/>
             <ResourcesSection/>
-            {/* MatchQuizSection queda reservado para una etapa posterior del comparador. */}
-            {/* <MatchQuizSection onLoginClick={()=>setShowLogin(true)}/> */}
             <Carousel onLoginClick={()=>setShowLogin(true)} onOpenProfile={openAnimalProfile}/>
             {showProcess && (
               <div id="como-funciona" style={{ scrollMarginTop: 110 }}>

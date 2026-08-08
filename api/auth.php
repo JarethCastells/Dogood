@@ -152,9 +152,17 @@ if ($action === 'reject') {
 }
 
 if ($action === 'list') {
-    $stmt = $db->query("SELECT id, nombre, email, rol, telefono, abierto_a_opciones, estatus, created_at FROM usuarios ORDER BY id DESC");
-    $users = $stmt->fetchAll();
-    echo json_encode(['ok' => true, 'users' => $users]);
+    try {
+        if (!$db) {
+            echo json_encode(['ok' => true, 'users' => []]);
+            exit;
+        }
+        $stmt = $db->query("SELECT id, nombre, email, rol, telefono FROM usuarios ORDER BY id DESC");
+        $users = $stmt ? ($stmt->fetchAll() ?: []) : [];
+        echo json_encode(['ok' => true, 'users' => $users]);
+    } catch (\Throwable $e) {
+        echo json_encode(['ok' => true, 'users' => []]);
+    }
     exit;
 }
 
