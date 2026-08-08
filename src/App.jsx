@@ -3408,10 +3408,12 @@ export default function DoGood({initialUser=null,onLogout}){
     const handleNewSol = () => { loadSols(); };
     window.addEventListener("dogood:solicitud-created", handleNewSol);
 
-    // Auto-polling en tiempo real para refrescar las solicitudes y activar los botones 'Contacto' y 'Ver Documentos'
+    // Auto-polling para refrescar las solicitudes cuando la pestaña esté activa
     const timer = setInterval(() => {
-      loadSols();
-    }, 3500);
+      if (document.visibilityState === "visible") {
+        loadSols();
+      }
+    }, 15000);
     return () => {
       clearInterval(timer);
       window.removeEventListener("dogood:solicitud-created", handleNewSol);
