@@ -2982,9 +2982,20 @@ export default function DoGood({initialUser=null,onLogout}){
       }
     } catch(e) {}
 
-    const userSaved = user.rol === "admin" ? localSaved : localSaved.filter(a => Number(a.rescatista_id) === Number(user.id));
-    setAnimals(userSaved);
-    setIsDemoData(false);
+    /* Fallback en modo demo/offline: combina animales creados + animales por defecto */
+    const baseList = [...localSaved, ...DEFAULT_ANIMALS];
+    const unique = [];
+    const map = new Map();
+    for (const item of baseList) {
+      if (item && item.id && !map.has(item.id)) {
+        if (user.rol === "admin" || !item.rescatista_id || Number(item.rescatista_id) === Number(user.id)) {
+          map.set(item.id, true);
+          unique.push(item);
+        }
+      }
+    }
+    setAnimals(unique);
+    setIsDemoData(true);
   },[user]);
 
   const loadSols=useCallback(async()=>{
