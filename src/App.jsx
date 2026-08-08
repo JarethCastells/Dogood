@@ -1028,6 +1028,187 @@ function ChecklistAdopcionModal({ solicitud, animal, onClose, onComplete }) {
   );
 }
 
+function triggerConvenioPrint(animal, solicitud, signatureData) {
+  const petName = animal?.nombre || solicitud?.animal_nombre || "Mascota";
+  const petEspecie = animal?.especie || solicitud?.animal_especie || "Mascota";
+  const petRaza = animal?.raza || solicitud?.animal_raza || "Criollo";
+  const petSexo = animal?.sexo || solicitud?.animal_sexo || "No especificado";
+  const petEdad = animal?.edad ? `${animal.edad} aprox` : "Joven";
+  const petColor = animal?.color && !animal.color.includes("gradient") ? animal.color : "Característico";
+  const petPhoto = animal?.foto_url || animal?.foto || solicitud?.animal_foto || "";
+  const petEmoji = animal?.emoji || solicitud?.animal_emoji || "🐾";
+  const adopterName = solicitud?.guest_nombre || solicitud?.usuario_nombre || "ADOPTANTE RESPONSABLE";
+  const rescuerName = animal?.rescatista_nombre || solicitud?.rescatista_nombre || "Refugio DoGood";
+  const compCode = `DG-COMP-2026-${(animal?.id || solicitud?.animal_id || 1).toString().padStart(4, "0")}`;
+  const today = new Date();
+  const dateStr = `Querétaro, Qro. a ${today.getDate()} de ${["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"][today.getMonth()]} de ${today.getFullYear()}`;
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8"/>
+        <title>Carta de Compromiso y Convenio - ${petName}</title>
+        <base href="${origin}/">
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+          body {
+            font-family: 'Plus Jakarta Sans', Segoe UI, sans-serif;
+            margin: 0;
+            padding: 20px;
+            color: #0f172a;
+            background: #fff;
+            line-height: 1.45;
+            font-size: 11px;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          @page { size: letter portrait; margin: 8mm; }
+          @media print { body { padding: 0; } }
+        </style>
+      </head>
+      <body>
+        <div style="max-width:800px;margin:0 auto;">
+          <div style="background:#FFFDF9;border:3px solid #0F45A2;border-radius:16px;padding:6px;position:relative;overflow:hidden;">
+            <div style="border:2px solid #F0C21D;border-radius:12px;padding:20px 24px;position:relative;background:linear-gradient(180deg,#FFFFFF 0%,#FFFDF6 100%);">
+              <div style="position:absolute;inset:0;background-image:url('${origin}/brand/graphic-hand-yellowblue.jpg');background-size:cover;background-position:center;opacity:0.035;pointer-events:none;"></div>
+              
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;border-bottom:1.5px solid rgba(240,194,29,0.5);padding-bottom:10px;position:relative;">
+                <img src="${origin}/brand/logo-primary-trim.png" alt="DoGood Logo" style="height:38px;object-fit:contain;" />
+                <div style="text-align:right;">
+                  <h2 style="font-family:sans-serif;font-size:13.5px;font-weight:900;margin:0;text-transform:uppercase;letter-spacing:1px;color:#0F45A2;">CARTA DE COMPROMISO Y CONVENIO DE ADOPCIÓN</h2>
+                  <div style="font-style:italic;font-size:10.5px;color:#64748B;margin-top:2px;">
+                    Folio: <strong style="color:#D97706;">${compCode}</strong> | ${dateStr}
+                  </div>
+                </div>
+              </div>
+
+              <div style="display:flex;gap:16px;align-items:center;margin-bottom:14px;background:#FFFFFF;padding:12px 16px;border-radius:12px;border:1.5px solid #E2E8F0;position:relative;">
+                <div style="width:80px;height:80px;border-radius:12px;border:2.5px solid #F0C21D;overflow:hidden;flex-shrink:0;background:#FFF;display:flex;align-items:center;justify-content:center;">
+                  ${petPhoto ? `<img src="${petPhoto}" alt="${petName}" style="width:100%;height:100%;object-fit:cover;" />` : `<span style="font-size:2.5rem;">${petEmoji}</span>`}
+                </div>
+                <div style="flex:1;">
+                  <p style="margin:0 0 6px 0;font-size:11px;font-weight:700;color:#0F45A2;">
+                    Por medio del presente instrumento, el adoptante formaliza la recepción legítima del animal de compañía:
+                  </p>
+                  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px 12px;font-size:10.5px;color:#334155;">
+                    <div><strong>Nombre:</strong> <span style="color:#D97706;font-weight:800;">${petName}</span></div>
+                    <div><strong>Especie:</strong> ${petEspecie.toUpperCase()}</div>
+                    <div><strong>Sexo:</strong> ${petSexo}</div>
+                    <div><strong>Edad:</strong> ${petEdad}</div>
+                    <div><strong>Tamaño:</strong> ${petColor}</div>
+                    <div><strong>Raza/Color:</strong> ${petRaza}</div>
+                  </div>
+                  <div style="margin-top:6px;padding-top:4px;border-top:1px dashed #E2E8F0;font-size:10.5px;color:#475569;">
+                    <strong>Adoptante Responsable:</strong> ${adopterName} | <strong>Rescatista/Refugio:</strong> ${rescuerName}
+                  </div>
+                </div>
+              </div>
+
+              <div style="margin-bottom:14px;position:relative;">
+                <div style="font-weight:800;font-size:11px;margin-bottom:6px;color:#0F45A2;text-transform:uppercase;letter-spacing:0.5px;display:flex;align-items:center;gap:6px;">
+                  <img src="${origin}/brand/isotype-blueyellow-trim.png" alt="Icon" style="width:14px;height:14px;" />
+                  <span>Cláusulas y Obligaciones del Adoptante Responsable:</span>
+                </div>
+                <ol style="margin:0;padding-left:18px;font-size:10px;color:#334155;line-height:1.38;">
+                  <li style="margin-bottom:2px;">Me comprometo a completar su esquema de vacunación, aplicando refuerzos y desparasitaciones periódicas conforme al veterinario.</li>
+                  <li style="margin-bottom:2px;">Me comprometo a llevar a la mascota a su cita de esterilización en la fecha agendada por su rescatista responsable.</li>
+                  <li style="margin-bottom:2px;">Le brindaré un refugio seco, parcialmente techado, limpio, ventilado y seguro, prodigándole buen trato y amor.</li>
+                  <li style="margin-bottom:2px;">Garantizaré acceso libre a un espacio digno y protegido de las inclemencias del clima (lluvia, frío o sol extremo).</li>
+                  <li style="margin-bottom:2px;">Le proporcionaré alimento nutritivo y suficiente, así como agua fresca y limpia disponible las 24 horas del día.</li>
+                  <li style="margin-bottom:2px;">El animal no vivirá encadenado, amarrado, enjaulado ni en azoteas o espacios reducidos por ningún período prolongado.</li>
+                  <li style="margin-bottom:2px;">Mantendré extremo cuidado para evitar escapes a la vía pública. En caso de extravío, informaré inmediatamente al rescatista y a DoGood.</li>
+                  <li style="margin-bottom:2px;">Le colocaré un collar con placa de identificación visible con su nombre y números telefónicos de contacto vigentes.</li>
+                  <li style="margin-bottom:2px;">Procuraré atención médica veterinaria inmediata ante cualquier síntoma de enfermedad o accidente.</li>
+                  <li style="margin-bottom:2px;">Cumpliré rigurosamente con las disposiciones legales y sanitarias municipales y estatales sobre tenencia de mascotas.</li>
+                  <li style="margin-bottom:2px;">Notificaré cualquier cambio de domicilio o teléfono durante la vida de la mascota para dar continuidad al seguimiento.</li>
+                  <li style="margin-bottom:2px;">Si por causa de fuerza mayor no pudiera conservar a la mascota, lo comunicaré al rescatista emisor para coordinar un re-hogar seguro.</li>
+                  <li style="margin-bottom:2px;">Bajo ninguna circunstancia abandonaré, regalaré para fines inadecuados, ni mutilaré (corte de cola/orejas) a la mascota.</li>
+                  <li style="margin-bottom:2px;">Acepto que ante el incumplimiento comprobado de estas cláusulas, la rescatista o DoGood podrán retirar a la mascota de inmediato.</li>
+                  <li style="margin-bottom:2px;">Permitiré visitas periódicas de seguimiento previa cita y compartiré evidencias fotográficas del estado de la mascota.</li>
+                  <li style="margin-bottom:2px;">Entiendo que las cuotas de recuperación no son reembolsables, pues financian la atención de más animales rescatados.</li>
+                </ol>
+              </div>
+
+              <div style="border-top:1.5px solid #E2E8F0;padding-top:10px;position:relative;">
+                <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:end;">
+                  <div style="text-align:center;">
+                    <div style="height:44px;display:flex;align-items:flex-end;justify-content:center;margin-bottom:2px;">
+                      ${signatureData ? `<img src="${signatureData}" alt="Firma" style="max-height:44px;max-width:180px;object-fit:contain;" />` : `<span style="font-size:.95rem;font-style:italic;color:#D97706;font-weight:700;">${adopterName.toUpperCase()}</span>`}
+                    </div>
+                    <div style="border-bottom:1.5px solid #0F45A2;width:85%;margin:0 auto 3px;"></div>
+                    <div style="font-size:10.5px;font-weight:bold;color:#0F45A2;">${adopterName.toUpperCase()}</div>
+                    <div style="font-size:9px;color:#64748B;">(Firma del Adoptante Responsable)</div>
+                  </div>
+
+                  <div style="text-align:center;padding:0 4px;">
+                    <div style="width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#FFF7DA 0%,#FEF3C7 100%);border:2px solid #F0C21D;box-shadow:0 3px 10px rgba(240,194,29,0.3);display:flex;flex-direction:column;align-items:center;justify-content:center;margin:0 auto 2px;">
+                      <img src="${origin}/brand/isotype-blueyellow-trim.png" alt="Seal" style="width:24px;height:24px;object-fit:contain;" />
+                      <span style="font-size:.42rem;font-weight:900;color:#92400E;letter-spacing:0.5px;">DO GOOD</span>
+                    </div>
+                    <div style="font-size:.55rem;font-weight:800;color:#059669;">CONVENIO REGISTRADO</div>
+                  </div>
+
+                  <div style="text-align:center;">
+                    <div style="height:44px;display:flex;align-items:flex-end;justify-content:center;margin-bottom:2px;">
+                      <span style="font-size:1rem;font-style:italic;color:#0F45A2;font-weight:700;">${rescuerName}</span>
+                    </div>
+                    <div style="border-bottom:1.5px solid #0F45A2;width:85%;margin:0 auto 3px;"></div>
+                    <div style="font-size:10.5px;font-weight:bold;color:#0F45A2;">${rescuerName.toUpperCase()}</div>
+                    <div style="font-size:9px;color:#64748B;">(Rescatista Emisor Responsable)</div>
+                  </div>
+                </div>
+
+                <div style="text-align:center;margin-top:8px;font-size:8.5px;color:#94A3B8;border-top:1px solid #F1F5F9;padding-top:4px;">
+                  Documento digital encriptado emitido por la Plataforma DoGood (dogood.mx) — Adopciones Responsables México
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+        <script>
+          window.onload = function() {
+            setTimeout(function() {
+              window.print();
+            }, 300);
+          };
+        </script>
+      </body>
+    </html>
+  `;
+
+  const printWin = window.open("", "_blank", "width=900,height=1100");
+  if (printWin) {
+    printWin.document.open();
+    printWin.document.write(htmlContent);
+    printWin.document.close();
+  } else {
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    document.body.appendChild(iframe);
+    
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(htmlContent);
+    doc.close();
+
+    setTimeout(() => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+      setTimeout(() => {
+        try { document.body.removeChild(iframe); } catch(e){}
+      }, 2000);
+    }, 500);
+  }
+}
+
 /* ========================================
    MODAL 3: CARPETA & EXPEDIENTE DIGITAL DEL ANIMAL CON ACUERDO LEGAL Y FIRMA
 ======================================== */
@@ -1373,50 +1554,7 @@ function ExpedienteDigitalModal({ animal, solicitud, onClose, onSaveSignature, o
               <div style={{ marginTop: 24, textAlign: "center" }}>
                 <button
                   type="button"
-                  onClick={() => {
-                    const printWin = window.open("", "_blank", "width=900,height=1100");
-                    if (!printWin) return;
-                    const el = document.getElementById("convenio-adopcion-print-area");
-                    if (!el) return;
-                    printWin.document.write(`
-                      <!DOCTYPE html>
-                      <html>
-                        <head>
-                          <title>Carta de Compromiso y Convenio - ${animal?.nombre || solicitud?.animal_nombre || "Mascota"}</title>
-                          <style>
-                            @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
-                            @font-face {
-                              font-family: 'Syne';
-                              src: url('/brand/AddenRegular.ttf') format('truetype');
-                              font-weight: 400 900;
-                            }
-                            body {
-                              font-family: 'Plus Jakarta Sans', Segoe UI, sans-serif;
-                              margin: 0;
-                              padding: 20px;
-                              color: #0f172a;
-                              background: #fff;
-                              line-height: 1.45;
-                              font-size: 11px;
-                              -webkit-print-color-adjust: exact !important;
-                              print-color-adjust: exact !important;
-                            }
-                            @page { size: letter portrait; margin: 8mm; }
-                            @media print { body { padding: 0; } }
-                          </style>
-                        </head>
-                        <body>
-                          <div style="max-width:800px;margin:0 auto;">
-                            ${el.innerHTML}
-                          </div>
-                          <script>
-                            setTimeout(() => { window.print(); }, 450);
-                          </script>
-                        </body>
-                      </html>
-                    `);
-                    printWin.document.close();
-                  }}
+                  onClick={() => triggerConvenioPrint(animal, solicitud, signatureData)}
                   style={{
                     padding: "14px 32px", borderRadius: 50,
                     background: "linear-gradient(135deg, #0F45A2 0%, #1653BB 100%)",
