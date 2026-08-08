@@ -528,7 +528,7 @@ export default function CatalogoPublico({ onLogin, onGoHome }) {
 
       let localSaved = [];
       try { localSaved = JSON.parse(localStorage.getItem("dogood_custom_animals") || "[]"); } catch {}
-      const customLocal = localSaved.filter(a => Number(a.id) > 1000 && Number(a.id) < 9000);
+      const customLocal = localSaved.filter(a => Number(a.id) > 10000);
 
       const combined = [...loadedAnimals, ...customLocal];
       const unique = [];
@@ -540,13 +540,8 @@ export default function CatalogoPublico({ onLogin, onGoHome }) {
         }
       }
 
-      if (unique.length > 0) {
-        setAnimals(unique);
-        setIsDemoData(false);
-      } else {
-        setAnimals(DEMO_ANIMALS);
-        setIsDemoData(true);
-      }
+      setAnimals(unique);
+      setIsDemoData(false);
       setLoading(false);
     })();
   }, []);

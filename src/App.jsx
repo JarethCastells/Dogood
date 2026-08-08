@@ -58,17 +58,9 @@ function ensureDataUriHeader(str) {
   return `data:image/jpeg;base64,${clean}`;
 }
 
-let apiFailureCount = 0;
-let lastApiCheck = 0;
-
 async function apiFetch(endpoint, action, method = "GET", body = null) {
   if (!REMOTE_API) {
     return { ok: false, error: "Modo demo local activo" };
-  }
-
-  const now = Date.now();
-  if (apiFailureCount >= 2 && now - lastApiCheck < 60000) {
-    return { ok: false, error: "Servidor en modo offline (demo activa)" };
   }
 
   const isGet = method === "GET";
@@ -76,23 +68,17 @@ async function apiFetch(endpoint, action, method = "GET", body = null) {
   const url = `${REMOTE_API}/${endpoint}.php?${queryString}`;
 
   try {
-    lastApiCheck = Date.now();
     const opts = { method, headers: { "Content-Type": "application/json" } };
     if (method === "POST" && body) opts.body = JSON.stringify(body);
 
     const res = await fetch(url, opts).catch(() => null);
     if (res && res.ok) {
-      apiFailureCount = 0;
       const data = await res.json().catch(() => null);
       if (data && data.ok) return data;
-    } else {
-      apiFailureCount++;
     }
-  } catch (e) {
-    apiFailureCount++;
-  }
+  } catch (e) {}
 
-  return { ok: false, error: "Servidor en modo offline (demo activa)" };
+  return { ok: false, error: "Error de comunicación con el servidor API" };
 }
 
 const DEFAULT_ANIMALS = [
@@ -3106,8 +3092,7 @@ export default function DoGood({initialUser=null,onLogout}){
       }
     } catch(e) {}
 
-    // Filtrar cualquier animal ficticio demo (IDs 101-106 y 9001-9008)
-    const customLocal = localSaved.filter(a => Number(a.id) > 1000 && Number(a.id) < 9000);
+    const customLocal = localSaved.filter(a => Number(a.id) > 10000);
     const combined = [...apiAnimals, ...customLocal];
     const unique = [];
     const map = new Map();
@@ -3120,13 +3105,8 @@ export default function DoGood({initialUser=null,onLogout}){
       }
     }
 
-    if (unique.length > 0) {
-      setAnimals(unique);
-      setIsDemoData(false);
-    } else {
-      setAnimals(DEFAULT_ANIMALS);
-      setIsDemoData(true);
-    }
+    setAnimals(unique);
+    setIsDemoData(false);
   },[user]);
 
   const loadSols=useCallback(async()=>{
