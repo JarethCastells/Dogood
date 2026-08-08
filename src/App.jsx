@@ -5202,87 +5202,155 @@ export default function DoGood({initialUser=null,onLogout}){
         {/* SECCIÓN 3: SOLICITUDES RECHAZADAS */}
         {page==="rescatistas_rechazados"&&(
           <div>
-            <div style={{marginBottom:22,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:14}}>
-              <div>
-                <h1 style={{fontFamily:"'Syne',sans-serif",fontSize:"1.9rem",fontWeight:800}}>❌ Solicitudes Rechazadas</h1>
-                <p style={{fontSize:".88rem",color:T.sub,marginTop:4}}>
-                  Historial de solicitudes de nuevos rescatistas que no fueron autorizadas. Puedes re-aprobarlas en cualquier momento.
-                </p>
-              </div>
-              <div style={{display:"flex",gap:8}}>
-                <button onClick={()=>goPage("aprobar_rescatistas")} style={{padding:"8px 16px",borderRadius:T.r.full,border:`1.5px solid ${T.border}`,background:T.surface,color:T.sub,fontWeight:700,fontSize:".82rem",cursor:"pointer"}}>
-                  ⏳ Por Aprobar ({allUsers.filter(u=>u.estatus==="pendiente").length})
-                </button>
-                <button onClick={()=>goPage("usuarios")} style={{padding:"8px 16px",borderRadius:T.r.full,border:`1.5px solid ${T.border}`,background:T.surface,color:T.sub,fontWeight:700,fontSize:".82rem",cursor:"pointer"}}>
-                  ✅ Aprobados ({allUsers.filter(u=>u.estatus==="aprobado"||u.rol==="admin"||(!u.estatus&&u.estatus!=="rechazado")).length})
-                </button>
-                <button onClick={()=>goPage("rescatistas_rechazados")} style={{padding:"8px 16px",borderRadius:T.r.full,border:`1.5px solid #EF4444`,background:"#EF4444",color:"#fff",fontWeight:800,fontSize:".82rem",cursor:"pointer"}}>
-                  ❌ Rechazados ({allUsers.filter(u=>u.estatus==="rechazado").length})
-                </button>
-              </div>
-            </div>
+            {(() => {
+              const rejectedUsers = allUsers.filter(u => u.estatus && (u.estatus.toLowerCase() === "rechazado" || u.estatus.toLowerCase() === "rechazada"));
+              const rejectedSols = solicitudes.filter(s => s.estatus === "Rechazada" || s.estatus === "Rechazado");
+              const totalRejected = rejectedUsers.length + rejectedSols.length;
 
-            {allUsers.filter(u=>u.estatus==="rechazado").length === 0 ? (
-              <div style={{background:T.surface,borderRadius:T.r.xl,border:`1.5px dashed ${T.border}`,padding:"48px 24px",textAlign:"center"}}>
-                <div style={{fontSize:"3.5rem",marginBottom:10}}>✨ 📋</div>
-                <h3 style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:"1.4rem",color:T.ink,marginBottom:6}}>
-                  No hay solicitudes rechazadas
-                </h3>
-                <p style={{fontSize:".88rem",color:T.sub,maxWidth:420,margin:"0 auto 16px",lineHeight:1.6}}>
-                  No existen solicitudes en el historial de rechazados.
-                </p>
-              </div>
-            ) : (
-              <div style={{background:T.surface,borderRadius:T.r.xl,border:`1.5px solid #FECACA`,overflow:"hidden",boxShadow:T.shadow.sm}}>
-                <div style={{overflowX:"auto"}}>
-                  <table style={{width:"100%",borderCollapse:"collapse"}}>
-                    <thead>
-                      <tr style={{background:T.bg}}>
-                        {["Rescatista / Nombre","Correo","Rol","Estado","Teléfono / WhatsApp","Acciones"].map(h=>(
-                          <th key={h} style={{textAlign:"left",fontSize:".7rem",fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:1,padding:"12px 18px",borderBottom:`1.5px solid ${T.border}`}}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {allUsers.filter(u=>u.estatus==="rechazado").map(u=>(
-                        <tr key={u.id} style={{borderBottom:`1px solid ${T.border}`,background:"#FEF2F2",transition:"background .1s"}}>
-                          <td style={{padding:"14px 18px"}}>
-                            <div style={{display:"flex",alignItems:"center",gap:10}}>
-                              <div style={{width:38,height:38,borderRadius:"50%",background:"linear-gradient(135deg,#DC2626,#EF4444)",color:"#fff",fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",fontSize:".88rem"}}>
-                                {u.nombre ? u.nombre.charAt(0).toUpperCase() : "R"}
-                              </div>
-                              <div>
-                                <span style={{fontWeight:800,fontSize:".9rem",color:T.ink}}>{u.nombre}</span>
-                                <div style={{fontSize:".72rem",color:T.muted}}>ID #{u.id}</div>
-                              </div>
-                            </div>
-                          </td>
-                          <td style={{padding:"14px 18px",fontSize:".88rem",color:T.ink,fontWeight:600}}>{u.email}</td>
-                          <td style={{padding:"14px 18px"}}>
-                            <Tag style={{background:"#DBEAFE",color:"#1E40AF"}}>Rescatista / Refugio 🐕</Tag>
-                          </td>
-                          <td style={{padding:"14px 18px"}}>
-                            <Tag style={{background:"#FEE2E2",color:"#991B1B"}}>❌ Rechazado</Tag>
-                          </td>
-                          <td style={{padding:"14px 18px",fontSize:".85rem",color:T.sub}}>{u.telefono || "—"}</td>
-                          <td style={{padding:"14px 18px"}}>
-                            <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                              <button
-                                onClick={() => approveRescatista(u)}
-                                disabled={loading}
-                                style={{padding:"8px 16px",border:"none",borderRadius:T.r.full,background:"#059669",color:"#fff",fontWeight:800,fontSize:".8rem",cursor:"pointer",boxShadow:"0 3px 10px rgba(5,150,105,.3)"}}
-                              >
-                                🟢 Re-Aprobar y Enviar Correo 📧
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
+              return (
+                <>
+                  <div style={{marginBottom:22,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:14}}>
+                    <div>
+                      <h1 style={{fontFamily:"'Syne',sans-serif",fontSize:"1.9rem",fontWeight:800}}>❌ Solicitudes Rechazadas</h1>
+                      <p style={{fontSize:".88rem",color:T.sub,marginTop:4}}>
+                        Historial de solicitudes de nuevos rescatistas y solicitudes de adopción no autorizadas. Puedes re-aprobarlas en cualquier momento.
+                      </p>
+                    </div>
+                    <div style={{display:"flex",gap:8}}>
+                      <button onClick={()=>goPage("aprobar_rescatistas")} style={{padding:"8px 16px",borderRadius:T.r.full,border:`1.5px solid ${T.border}`,background:T.surface,color:T.sub,fontWeight:700,fontSize:".82rem",cursor:"pointer"}}>
+                        ⏳ Por Aprobar ({allUsers.filter(u=>u.estatus==="pendiente").length})
+                      </button>
+                      <button onClick={()=>goPage("usuarios")} style={{padding:"8px 16px",borderRadius:T.r.full,border:`1.5px solid ${T.border}`,background:T.surface,color:T.sub,fontWeight:700,fontSize:".82rem",cursor:"pointer"}}>
+                        ✅ Aprobados ({allUsers.filter(u=>u.estatus==="aprobado"||u.rol==="admin"||(!u.estatus&&u.estatus!=="rechazado")).length})
+                      </button>
+                      <button onClick={()=>goPage("rescatistas_rechazados")} style={{padding:"8px 16px",borderRadius:T.r.full,border:`1.5px solid #EF4444`,background:"#EF4444",color:"#fff",fontWeight:800,fontSize:".82rem",cursor:"pointer"}}>
+                        ❌ Rechazados ({totalRejected})
+                      </button>
+                    </div>
+                  </div>
+
+                  {totalRejected === 0 ? (
+                    <div style={{background:T.surface,borderRadius:T.r.xl,border:`1.5px dashed ${T.border}`,padding:"48px 24px",textAlign:"center"}}>
+                      <div style={{fontSize:"3.5rem",marginBottom:10}}>✨ 📋</div>
+                      <h3 style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:"1.4rem",color:T.ink,marginBottom:6}}>
+                        No hay solicitudes rechazadas
+                      </h3>
+                      <p style={{fontSize:".88rem",color:T.sub,maxWidth:420,margin:"0 auto 16px",lineHeight:1.6}}>
+                        No existen solicitudes en el historial de rechazados.
+                      </p>
+                    </div>
+                  ) : (
+                    <div style={{display:"grid",gap:20}}>
+                      {/* Sub-tabla 1: Rescatistas Rechazados */}
+                      {rejectedUsers.length > 0 && (
+                        <div style={{background:T.surface,borderRadius:T.r.xl,border:`1.5px solid #FECACA`,overflow:"hidden",boxShadow:T.shadow.sm}}>
+                          <div style={{background:"#FEE2E2",padding:"10px 18px",fontSize:".84rem",fontWeight:800,color:"#991B1B"}}>
+                            👤 Solicitudes de Registro de Rescatistas Rechazadas ({rejectedUsers.length})
+                          </div>
+                          <div style={{overflowX:"auto"}}>
+                            <table style={{width:"100%",borderCollapse:"collapse"}}>
+                              <thead>
+                                <tr style={{background:T.bg}}>
+                                  {["Rescatista / Nombre","Correo","Rol","Estado","Teléfono / WhatsApp","Acciones"].map(h=>(
+                                    <th key={h} style={{textAlign:"left",fontSize:".7rem",fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:1,padding:"12px 18px",borderBottom:`1.5px solid ${T.border}`}}>{h}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {rejectedUsers.map(u=>(
+                                  <tr key={u.id} style={{borderBottom:`1px solid ${T.border}`,background:"#FEF2F2",transition:"background .1s"}}>
+                                    <td style={{padding:"14px 18px"}}>
+                                      <div style={{display:"flex",alignItems:"center",gap:10}}>
+                                        <div style={{width:38,height:38,borderRadius:"50%",background:"linear-gradient(135deg,#DC2626,#EF4444)",color:"#fff",fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",fontSize:".88rem"}}>
+                                          {u.nombre ? u.nombre.charAt(0).toUpperCase() : "R"}
+                                        </div>
+                                        <div>
+                                          <span style={{fontWeight:800,fontSize:".9rem",color:T.ink}}>{u.nombre}</span>
+                                          <div style={{fontSize:".72rem",color:T.muted}}>ID #{u.id}</div>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td style={{padding:"14px 18px",fontSize:".88rem",color:T.ink,fontWeight:600}}>{u.email}</td>
+                                    <td style={{padding:"14px 18px"}}>
+                                      <Tag style={{background:"#DBEAFE",color:"#1E40AF"}}>Rescatista / Refugio 🐕</Tag>
+                                    </td>
+                                    <td style={{padding:"14px 18px"}}>
+                                      <Tag style={{background:"#FEE2E2",color:"#991B1B"}}>❌ Rechazado</Tag>
+                                    </td>
+                                    <td style={{padding:"14px 18px",fontSize:".85rem",color:T.sub}}>{u.telefono || "—"}</td>
+                                    <td style={{padding:"14px 18px"}}>
+                                      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                                        <button
+                                          onClick={() => approveRescatista(u)}
+                                          disabled={loading}
+                                          style={{padding:"8px 16px",border:"none",borderRadius:T.r.full,background:"#059669",color:"#fff",fontWeight:800,fontSize:".8rem",cursor:"pointer",boxShadow:"0 3px 10px rgba(5,150,105,.3)"}}
+                                        >
+                                          🟢 Re-Aprobar y Enviar Correo 📧
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Sub-tabla 2: Solicitudes de Adopción Rechazadas */}
+                      {rejectedSols.length > 0 && (
+                        <div style={{background:T.surface,borderRadius:T.r.xl,border:`1.5px solid #FECACA`,overflow:"hidden",boxShadow:T.shadow.sm}}>
+                          <div style={{background:"#FEE2E2",padding:"10px 18px",fontSize:".84rem",fontWeight:800,color:"#991B1B"}}>
+                            🐾 Solicitudes de Adopción Rechazadas ({rejectedSols.length})
+                          </div>
+                          <div style={{overflowX:"auto"}}>
+                            <table style={{width:"100%",borderCollapse:"collapse"}}>
+                              <thead>
+                                <tr style={{background:T.bg}}>
+                                  {["Mascota","Candidato / Adoptante","Contacto","Motivo Rechazo","Estado","Acciones"].map(h=>(
+                                    <th key={h} style={{textAlign:"left",fontSize:".7rem",fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:1,padding:"12px 18px",borderBottom:`1.5px solid ${T.border}`}}>{h}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {rejectedSols.map(s=>(
+                                  <tr key={s.id} style={{borderBottom:`1px solid ${T.border}`,background:"#FEF2F2",transition:"background .1s"}}>
+                                    <td style={{padding:"14px 18px",fontWeight:800,color:T.ink}}>
+                                      {s.animal_nombre || "Mascota"} #{s.animal_id}
+                                    </td>
+                                    <td style={{padding:"14px 18px",fontSize:".88rem",color:T.ink,fontWeight:700}}>
+                                      {s.guest_nombre || s.usuario_nombre || "Adoptante"}
+                                    </td>
+                                    <td style={{padding:"14px 18px",fontSize:".85rem",color:T.sub}}>
+                                      {s.guest_email || s.usuario_email || "—"}<br/>
+                                      <span style={{fontSize:".78rem",color:T.muted}}>{s.guest_telefono || s.usuario_telefono || ""}</span>
+                                    </td>
+                                    <td style={{padding:"14px 18px",fontSize:".82rem",color:"#991B1B",fontStyle:"italic"}}>
+                                      {s.motivo_rechazo || "No especificado"}
+                                    </td>
+                                    <td style={{padding:"14px 18px"}}>
+                                      <Tag style={{background:"#FEE2E2",color:"#991B1B"}}>❌ Solicitud Rechazada</Tag>
+                                    </td>
+                                    <td style={{padding:"14px 18px"}}>
+                                      <button
+                                        onClick={() => resolverSol(s.id, "Aprobada")}
+                                        style={{padding:"8px 16px",border:"none",borderRadius:T.r.full,background:"#059669",color:"#fff",fontWeight:800,fontSize:".8rem",cursor:"pointer"}}
+                                      >
+                                        🟢 Re-Aprobar Adopción
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
         )}
 
